@@ -21,6 +21,7 @@ you and for how long.
 
 - [How it decides who is blocking](#how-it-decides-who-is-blocking)
 - [Quick start](#quick-start)
+- [Token permissions](#token-permissions)
 - [Docker](#docker)
 - [Configuration](#configuration)
 - [Silencing](#silencing)
@@ -79,9 +80,43 @@ Once the dry run looks right:
 npm start        # scheduler + admin panel on http://127.0.0.1:8080
 ```
 
-**The GitLab token** needs the `read_api` scope only, and must belong to a user who can see
-every group listed under `gitlab.groups`. No admin token is required — which is why
-recipient addresses come from configuration rather than the users API.
+**The GitLab token** needs the `read_api` scope only. See
+[Token permissions](#token-permissions) for the role that user also needs.
+
+## Token permissions
+
+Every credential here is deliberately narrow. Nothing needs admin rights on any system.
+
+| Token | Permission | Why no more |
+| --- | --- | --- |
+| **GitLab** personal access token | `read_api` scope | Only reads merge requests, reviewers and discussions. It never writes to GitLab |
+| **Slack** bot token (`xoxb-…`) | `chat:write` bot scope | Only posts messages. Needs no read scopes and no channel invitation to send direct messages |
+| **Telegram** bot token | *not scoped* | Telegram tokens grant full control of that bot; treat the token as the secret it is |
+| **SMTP** credentials | Whatever your relay requires to send | Only sends mail |
+
+### The GitLab role, not just the scope
+
+The scope decides *what kind* of API calls are allowed; the token user's **role on each
+project** decides what they can actually see. Getting this wrong is quiet — scans simply
+come back empty rather than failing — so it is worth being exact.
+
+| Project visibility | Minimum role for the token's user |
+| --- | --- |
+| **Private** | **Reporter** — the Guest role cannot view merge requests on private projects |
+| Internal | Guest is enough |
+| Public | Guest is enough |
+
+Most self-hosted projects are private, so **Reporter is the safe answer**. One extra
+wrinkle: a user flagged as an [external user](https://docs.gitlab.com/user/permissions/)
+needs at least Reporter granted explicitly, *even on internal projects*.
+
+Add the token's user to each group under `gitlab.groups` at Reporter, or use a group
+access token with the Reporter role, and it will see everything it needs across the
+subgroups beneath.
+
+**No admin token is required.** That is a deliberate design consequence: recipient
+addresses come from your configuration rather than from GitLab's users API, which is the
+only thing that would have needed an admin credential.
 
 ## Docker
 
@@ -415,7 +450,12 @@ database still needs to persist between runs.
 ## Troubleshooting
 
 **"GitLab rejected the token (HTTP 401)"** — the token is wrong or expired. It needs the
-`read_api` scope.
+`read_api` scope; see [Token permissions](#token-permissions).
+
+**Scans come back empty, or a project is silently missing.** Usually the token's user has
+the Guest role on a private project, which cannot view merge requests at all. Reporter is
+the minimum there — see [Token permissions](#token-permissions). `check-config --remote`
+reports the open merge request count per group, which makes this visible quickly.
 
 **"group X was not found, or the token cannot see it"** — check the path is the full group
 path (`platform/infra`, not `infra`) and that the token's user is a member.

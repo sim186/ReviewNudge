@@ -10,7 +10,10 @@
 
 gitlab:
   url: https://gitlab.example.com
-  token: ${GITLAB_TOKEN} # personal access token, read_api scope is enough
+  # Personal access token with the read_api scope. The token's user also needs at
+  # least the Reporter role on private projects — Guest cannot see merge requests
+  # there, and the symptom is an empty scan rather than an error. See the README.
+  token: ${GITLAB_TOKEN}
   groups: # full paths; subgroups are included
     - engineering
     - platform/infra
