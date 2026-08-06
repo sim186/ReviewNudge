@@ -116,6 +116,35 @@ describe('renderDigest', () => {
     expect(out.card.type).toBe('message');
   });
 
+  it('exposes the card at the top level as well as inside attachments', () => {
+    // triggerBody()?['card'] is much easier to write in Power Automate than
+    // reaching into the attachments array, so both are offered.
+    const out = renderDigest(digest(), TEMPLATE);
+    expect(out.card.card).toBe(out.card.attachments[0]!.content);
+    expect(out.card.card).toMatchObject({ type: 'AdaptiveCard', version: '1.4' });
+  });
+
+  it('addresses one person per message, never a broadcast', () => {
+    const bob = renderDigest(
+      digest({
+        username: 'bob',
+        recipient: {
+          gitlab_username: 'bob',
+          email: null,
+          teams_upn: 'bob@example.com',
+          channels: null,
+          snooze_until: null,
+          enabled: true,
+        },
+      }),
+      TEMPLATE,
+    );
+    expect(bob.card.targetUpn).toBe('bob@example.com');
+    expect(bob.card.gitlabUsername).toBe('bob');
+    // Nothing in the payload references anyone else.
+    expect(JSON.stringify(bob.card)).not.toContain('alice');
+  });
+
   it('caps Adaptive Card actions at six', () => {
     const items = Array.from({ length: 10 }, (_, i) =>
       item({ mr: { ...item().mr, iid: String(i), title: `MR ${i}` } }),

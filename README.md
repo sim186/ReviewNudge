@@ -254,18 +254,48 @@ before and after values.
 ## Setting up the Teams workflow
 
 Office 365 connectors (the old `outlook.office.com/webhook` incoming webhooks) were retired
-on **30 April 2026** and no longer work. Use Power Automate:
+on **30 April 2026** and no longer work. Use Power Automate.
+
+### Does each person get a private message?
+
+**The content is already per-person; where it lands is decided by your flow.**
+
+MergeRequestAlarm sends **one HTTP POST per recipient**, each containing only that person's
+merge requests and their own identity. If five people are blocking work, that is five
+separate POSTs to the same workflow URL. Nothing is broadcast, and nobody's payload
+contains anybody else's list. A recipient with no `teams_upn` is skipped rather than
+posted somewhere unroutable.
+
+What MergeRequestAlarm cannot do is decide whether that becomes a direct message or a
+channel post — that is the action you choose inside the flow. Both are supported by the
+same payload:
+
+| You want | Configure the flow's **Post card in a chat or channel** action as |
+| --- | --- |
+| **A private message to each person** (recommended) | *Post as*: **Flow bot** · *Post in*: **Chat with Flow bot** · *Recipient*: the payload's `targetUpn` |
+| **One channel post, @-mentioning the person** | *Post as*: Flow bot · *Post in*: **Channel** · pick the channel, and use `targetUpn` to build the mention |
+
+The private-message route is the one that matches how these digests are built: each is a
+personal to-do list, and posting them all into a shared channel means everyone reads
+everyone else's.
+
+### Building the flow
 
 1. In Teams, open the channel menu → **Workflows** → **Create a new flow**.
-2. Pick a template starting from **"When a Teams webhook request is received"**, or build a
-   flow with that trigger.
-3. Add a **Post card in a chat or channel** action, and set its message to the incoming
-   payload's Adaptive Card.
+2. Start from the **"When a Teams webhook request is received"** trigger.
+3. Add **Post card in a chat or channel** and fill it in per the table above. The two
+   expressions you need are:
+   - Recipient — `triggerBody()?['targetUpn']`
+   - Adaptive Card — `triggerBody()?['card']`
 4. Save, copy the generated `https://…logic.azure.com/workflows/…` URL, and put it in
    `TEAMS_WORKFLOW_URL`.
 
-One URL serves everyone. Each POST is an Adaptive Card 1.4 in the Workflows envelope, plus
-routing hints your flow can branch on:
+### The payload
+
+One URL serves everyone. Each POST is an Adaptive Card 1.4, sent both in the Workflows
+envelope and as a top-level `card` field — the two are the same object, and `card` exists
+purely because it is far easier to reference in a Power Automate expression than
+`attachments[0].content`. Use whichever your flow finds convenient.
 
 ```json
 {
@@ -273,15 +303,32 @@ routing hints your flow can branch on:
   "targetUpn": "alice@example.com",
   "gitlabUsername": "alice",
   "itemCount": 3,
-  "attachments": [{ "contentType": "application/vnd.microsoft.card.adaptive", "content": {} }]
+  "card": { "type": "AdaptiveCard", "version": "1.4", "body": [] },
+  "attachments": [
+    { "contentType": "application/vnd.microsoft.card.adaptive", "contentUrl": null, "content": {} }
+  ]
 }
 ```
 
-Use `targetUpn` to direct-message the right person, or to @-mention them in a channel post.
+| Field | Use |
+| --- | --- |
+| `targetUpn` | Who this digest is for. Route the direct message, or build the @-mention |
+| `gitlabUsername` | The same person's GitLab handle, for logging or branching |
+| `itemCount` | How many merge requests are waiting, before the display cap |
+| `card` | The Adaptive Card. Identical to `attachments[0].content` |
+
 Cards are capped at six link buttons and shed rows if they would exceed the Teams size
-limit — the heading always reports the true total.
+limit — the heading always reports the true total. When self-service links are enabled,
+each row also carries a **Mute this one** link and the card gains a **Mute or pause…**
+button.
 
 Check it works with `node dist/cli.js test-notify --recipient alice`.
+
+> **Not verified against a live tenant.** The `TeamsNotifier` is covered by tests against a
+> stubbed endpoint, so the request shape, timeouts and error handling are known-good, but
+> no Microsoft tenant was available to confirm that a direct message actually arrives. The
+> flow recipe above follows Microsoft's documentation. Run `test-notify` once before
+> relying on it.
 
 ## Commands
 

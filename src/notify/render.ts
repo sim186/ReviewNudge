@@ -23,6 +23,12 @@ export interface TeamsMessage {
   targetUpn: string | null;
   gitlabUsername: string;
   itemCount: number;
+  /**
+   * The same card as `attachments[0].content`, hoisted to the top level because
+   * `triggerBody()?['card']` is far easier to write in a Power Automate expression than
+   * reaching into the attachments array.
+   */
+  card: Record<string, unknown>;
   attachments: {
     contentType: 'application/vnd.microsoft.card.adaptive';
     contentUrl: null;
@@ -309,6 +315,7 @@ function wrap(digest: Digest, card: Record<string, unknown>): TeamsMessage {
     targetUpn: digest.recipient.teams_upn,
     gitlabUsername: digest.username,
     itemCount: digest.totalItems,
+    card,
     attachments: [
       {
         contentType: 'application/vnd.microsoft.card.adaptive',
