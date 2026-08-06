@@ -29,9 +29,11 @@ CREATE TABLE IF NOT EXISTS exclusions (
 -- Recipient mapping. Seeded from config.yaml on first start, managed in the panel
 -- afterwards. `channels` is a JSON array, or NULL to inherit the global setting.
 CREATE TABLE IF NOT EXISTS recipients (
-  gitlab_username TEXT PRIMARY KEY,
-  email           TEXT,
-  teams_upn       TEXT,
+  gitlab_username  TEXT PRIMARY KEY,
+  email            TEXT,
+  teams_upn        TEXT,
+  slack_id         TEXT,
+  telegram_chat_id TEXT,
   channels        TEXT,
   snooze_until    TEXT,
   enabled         INTEGER NOT NULL DEFAULT 1,

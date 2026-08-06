@@ -6,7 +6,7 @@ import { z } from 'zod';
  * switch) are stored in SQLite and layered on top by config/effective.ts.
  */
 
-export const CHANNELS = ['email', 'teams'] as const;
+export const CHANNELS = ['email', 'teams', 'slack', 'telegram'] as const;
 export const channelSchema = z.enum(CHANNELS);
 export type Channel = z.infer<typeof channelSchema>;
 
@@ -103,10 +103,30 @@ const teamsSchema = z.object({
   timeout_ms: z.number().int().positive().default(15_000),
 });
 
+const slackSchema = z.object({
+  /** Bot token (xoxb-…) with the chat:write scope. Required for direct messages. */
+  bot_token: z.string().min(1),
+  api_url: z.string().url().default('https://slack.com/api'),
+  timeout_ms: z.number().int().positive().default(15_000),
+});
+
+const telegramSchema = z.object({
+  /** Token from @BotFather. */
+  bot_token: z.string().min(1),
+  api_url: z.string().url().default('https://api.telegram.org'),
+  timeout_ms: z.number().int().positive().default(15_000),
+  /** Telegram notifies loudly by default; silence the ping but still deliver. */
+  disable_notification: z.boolean().default(false),
+});
+
 export const recipientSchema = z.object({
   gitlab_username: z.string().min(1),
   email: z.string().email().nullable().default(null),
   teams_upn: z.string().nullable().default(null),
+  /** Slack member ID (U…), which is what chat.postMessage opens a direct message to. */
+  slack_id: z.string().nullable().default(null),
+  /** Telegram chat ID. The person must message the bot once before this exists. */
+  telegram_chat_id: z.string().nullable().default(null),
   channels: z.array(channelSchema).nullable().default(null),
   snooze_until: isoDate.nullable().default(null),
 });
@@ -123,6 +143,8 @@ export const configSchema = z
     notifications: notificationsSchema.default({}),
     email: emailSchema.optional(),
     teams: teamsSchema.optional(),
+    slack: slackSchema.optional(),
+    telegram: telegramSchema.optional(),
     recipients: z.array(recipientSchema).default([]),
     retention: z
       .object({
@@ -134,19 +156,14 @@ export const configSchema = z
   .superRefine((cfg, ctx) => {
     // A channel that is switched on but not configured would fail silently at send
     // time, long after the operator has stopped watching. Catch it at load.
-    if (cfg.notifications.channels.includes('email') && !cfg.email) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['email'],
-        message: 'notifications.channels includes "email" but the email section is missing',
-      });
-    }
-    if (cfg.notifications.channels.includes('teams') && !cfg.teams) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['teams'],
-        message: 'notifications.channels includes "teams" but the teams section is missing',
-      });
+    for (const channel of CHANNELS) {
+      if (cfg.notifications.channels.includes(channel) && !cfg[channel]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [channel],
+          message: `notifications.channels includes "${channel}" but the ${channel} section is missing`,
+        });
+      }
     }
     if (cfg.admin.enabled && cfg.admin.password.length < 8) {
       ctx.addIssue({

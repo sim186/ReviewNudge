@@ -1,4 +1,5 @@
 import type { Channel } from '../config/schema.js';
+import { addressFor } from './channels.js';
 import type { Digest } from '../domain/digest.js';
 import type { RenderedDigest } from './render.js';
 import type { Notifier } from './types.js';
@@ -14,8 +15,7 @@ export class ConsoleNotifier implements Notifier {
   ) {}
 
   async send(digest: Digest, rendered: RenderedDigest): Promise<void> {
-    const target =
-      this.channel === 'email' ? digest.recipient.email : digest.recipient.teams_upn;
+    const target = addressFor(digest.recipient, this.channel);
 
     this.write('');
     this.write(`── ${this.channel} → ${digest.username} <${target ?? 'no address'}>`);

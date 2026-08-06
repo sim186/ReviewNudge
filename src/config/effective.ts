@@ -26,6 +26,8 @@ export interface EffectiveConfig {
   admin: Config['admin'];
   email: Config['email'];
   teams: Config['teams'];
+  slack: Config['slack'];
+  telegram: Config['telegram'];
   retention: Config['retention'];
   schedule: Config['schedule'];
   rules: Rules;
@@ -168,6 +170,8 @@ export class ConfigProvider {
       gitlab_username: r.gitlab_username,
       email: r.email,
       teams_upn: r.teams_upn,
+      slack_id: r.slack_id,
+      telegram_chat_id: r.telegram_chat_id,
       channels: r.channels,
       snooze_until: r.snooze_until,
       enabled: true,
@@ -186,6 +190,8 @@ export class ConfigProvider {
       admin: f.admin,
       email: f.email,
       teams: f.teams,
+      slack: f.slack,
+      telegram: f.telegram,
       retention: f.retention,
       schedule: {
         cron: this.override('schedule.cron', f.schedule.cron),

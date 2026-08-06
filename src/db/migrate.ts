@@ -35,5 +35,26 @@ export function openDatabase(path?: string, env: NodeJS.ProcessEnv = process.env
 
   const schema = readFileSync(resolve(here, 'schema.sql'), 'utf8');
   db.exec(schema);
+  addMissingColumns(db);
   return db;
+}
+
+/**
+ * Columns added to existing tables after the first release.
+ *
+ * `CREATE TABLE IF NOT EXISTS` leaves an existing table untouched, so a database
+ * created before a column existed would never gain it. Each entry is applied only
+ * when absent, which keeps startup idempotent and upgrades in place.
+ */
+const ADDED_COLUMNS: { table: string; column: string; definition: string }[] = [
+  { table: 'recipients', column: 'slack_id', definition: 'TEXT' },
+  { table: 'recipients', column: 'telegram_chat_id', definition: 'TEXT' },
+];
+
+function addMissingColumns(db: Db): void {
+  for (const { table, column, definition } of ADDED_COLUMNS) {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    if (columns.some((c) => c.name === column)) continue;
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
 }

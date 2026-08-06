@@ -1,5 +1,6 @@
 import type { Channel } from '../config/schema.js';
 import type { RecipientRow } from '../db/repo.js';
+import { addressFor } from '../notify/channels.js';
 import type { MergeRequestRef, Reason, ReasonKind } from './reasons.js';
 import { isSnoozed } from './silence.js';
 
@@ -157,10 +158,7 @@ export function resolveChannels(
   options: Pick<BuildDigestOptions, 'defaultChannels' | 'availableChannels'>,
 ): Channel[] {
   const requested = recipient.channels ?? options.defaultChannels;
-  return requested.filter((channel) => {
-    if (!options.availableChannels.includes(channel)) return false;
-    if (channel === 'email') return Boolean(recipient.email);
-    if (channel === 'teams') return Boolean(recipient.teams_upn);
-    return false;
-  });
+  return requested.filter(
+    (channel) => options.availableChannels.includes(channel) && Boolean(addressFor(recipient, channel)),
+  );
 }

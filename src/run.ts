@@ -10,12 +10,12 @@ import { describeSilence, evaluateRunSilence } from './domain/silence.js';
 import { GitLabClient } from './gitlab/client.js';
 import type { EnrichedMergeRequest, GqlMergeRequest } from './gitlab/types.js';
 import { logger as rootLogger, type Logger } from './logger.js';
-import { ConsoleNotifier } from './notify/console.js';
-import { EmailNotifier } from './notify/email.js';
+import { availableChannels, buildNotifiers } from './notify/factory.js';
 import { renderDigest, type SelfServiceLinks } from './notify/render.js';
 import { manageLink, mintRecipientToken, muteLink, selfServiceBaseUrl } from './notify/tokens.js';
-import { TeamsNotifier } from './notify/teams.js';
 import type { Notifier } from './notify/types.js';
+
+export { buildNotifiers } from './notify/factory.js';
 
 export interface RunOptions {
   trigger: RunTrigger;
@@ -45,18 +45,6 @@ export interface RunSummary {
   dryRun: boolean;
 }
 
-export function buildNotifiers(config: EffectiveConfig, dryRun: boolean): Map<Channel, Notifier> {
-  const notifiers = new Map<Channel, Notifier>();
-  for (const channel of config.notifications.channels) {
-    if (dryRun) {
-      notifiers.set(channel, new ConsoleNotifier(channel));
-      continue;
-    }
-    if (channel === 'email' && config.email) notifiers.set(channel, new EmailNotifier(config.email));
-    if (channel === 'teams' && config.teams) notifiers.set(channel, new TeamsNotifier(config.teams));
-  }
-  return notifiers;
-}
 
 function toSnapshotItems(result: DigestResult): SnapshotItem[] {
   const items: SnapshotItem[] = [];
@@ -214,13 +202,10 @@ export async function executeRun(
     }
 
     // -------------------------------------------------------------- digest
-    const availableChannels = [...config.notifications.channels].filter(
-      (c) => (c === 'email' && config.email) || (c === 'teams' && config.teams),
-    );
     const result = buildDigests(reasons, {
       recipients: config.recipients,
       defaultChannels: config.notifications.channels,
-      availableChannels,
+      availableChannels: availableChannels(config),
       maxItemsPerDigest: config.notifications.max_items_per_digest,
       timezone: config.schedule.timezone,
       now,

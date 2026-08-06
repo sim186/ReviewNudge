@@ -15,6 +15,10 @@ export interface RenderedDigest {
   html: string;
   /** The Workflows envelope, ready to POST to a Power Automate webhook. */
   card: TeamsMessage;
+  /** Block Kit blocks for Slack's chat.postMessage. */
+  slackBlocks: Record<string, unknown>[];
+  /** Telegram-flavoured HTML, which supports only a small tag subset. */
+  telegramHtml: string;
 }
 
 export interface TeamsMessage {
@@ -351,5 +355,116 @@ export function renderDigest(
     text: renderText(digest, links),
     html: renderHtml(digest, links),
     card: renderCard(digest, links),
+    slackBlocks: renderSlackBlocks(digest, links),
+    telegramHtml: renderTelegramHtml(digest, links),
   };
+}
+
+// ------------------------------------------------------------------- slack
+
+/** Escapes the three characters Slack treats specially in message text. */
+export function escapeSlackText(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/** Slack link syntax is <url|label>, not markdown. */
+function slackLink(url: string, label: string): string {
+  return `<${url}|${escapeSlackText(label)}>`;
+}
+
+/** Block Kit caps a message at 50 blocks; stay clear of it. */
+const MAX_SLACK_BLOCKS = 45;
+
+function renderSlackBlocks(
+  digest: Digest,
+  links?: SelfServiceLinks | null,
+): Record<string, unknown>[] {
+  const heading =
+    digest.totalItems === 1
+      ? '1 merge request is waiting for your input'
+      : `${digest.totalItems} merge requests are waiting for your input`;
+
+  const blocks: Record<string, unknown>[] = [
+    { type: 'header', text: { type: 'plain_text', text: heading, emoji: false } },
+  ];
+
+  // Two blocks per item, minus the header and footer allowance.
+  const room = Math.max(1, Math.floor((MAX_SLACK_BLOCKS - 3) / 2));
+  const shown = digest.items.slice(0, room);
+
+  for (const item of shown) {
+    const kinds = item.kinds.map((k) => KIND_LABEL[k]).join(' · ');
+    const muteSuffix = links ? ` · ${slackLink(links.mute(item.mr.url), 'mute this one')}` : '';
+
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*${slackLink(item.mr.url, item.mr.title)}*\n${escapeSlackText(item.detail)}`,
+      },
+    });
+    blocks.push({
+      type: 'context',
+      elements: [
+        {
+          type: 'mrkdwn',
+          text: `${escapeSlackText(item.mr.projectPath)} !${escapeSlackText(item.mr.iid)} · ${escapeSlackText(kinds)} · waiting ${waitingLabel(item.waitingDays)}${muteSuffix}`,
+        },
+      ],
+    });
+  }
+
+  const hidden = digest.totalItems - shown.length;
+  const footer: string[] = [];
+  if (hidden > 0) footer.push(`_${hidden} more not shown._`);
+  if (links) footer.push(slackLink(links.manage, 'Mute one of these, or pause everything'));
+  if (footer.length > 0) {
+    blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: footer.join(' · ') }] });
+  }
+
+  return blocks;
+}
+
+// ---------------------------------------------------------------- telegram
+
+/**
+ * Telegram's HTML mode understands a short tag list and requires the same three
+ * escapes as Slack. Anything else in the text must be escaped or the send is rejected.
+ */
+export function escapeTelegramHtml(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function renderTelegramHtml(digest: Digest, links?: SelfServiceLinks | null): string {
+  const heading =
+    digest.totalItems === 1
+      ? '<b>1 merge request is waiting for your input</b>'
+      : `<b>${digest.totalItems} merge requests are waiting for your input</b>`;
+
+  const lines: string[] = [heading, ''];
+
+  for (const item of digest.items) {
+    const kinds = item.kinds.map((k) => KIND_LABEL[k]).join(' · ');
+    lines.push(
+      `• <a href="${escapeTelegramHtml(item.mr.url)}">${escapeTelegramHtml(item.mr.title)}</a>`,
+    );
+    lines.push(
+      `  <i>${escapeTelegramHtml(item.mr.projectPath)} !${escapeTelegramHtml(item.mr.iid)} · ${escapeTelegramHtml(kinds)} · waiting ${waitingLabel(item.waitingDays)}</i>`,
+    );
+    lines.push(`  ${escapeTelegramHtml(item.detail)}`);
+    if (links) {
+      lines.push(`  <a href="${escapeTelegramHtml(links.mute(item.mr.url))}">Mute this one</a>`);
+    }
+    lines.push('');
+  }
+
+  const note = truncationNote(digest);
+  if (note) lines.push(`<i>${escapeTelegramHtml(note)}</i>`, '');
+  if (links) {
+    lines.push(
+      `<a href="${escapeTelegramHtml(links.manage)}">Mute one of these, or pause everything</a>`,
+    );
+  }
+
+  return lines.join('\n').trim();
 }

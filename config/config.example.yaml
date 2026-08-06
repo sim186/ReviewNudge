@@ -70,7 +70,7 @@ silence:
   muted_merge_requests: [] # full merge request URLs
 
 notifications:
-  channels: [email, teams] # remove one to switch that channel off entirely
+  channels: [email, teams] # add slack and/or telegram to enable those too
   max_items_per_digest: 25
   skip_empty: true # send nothing to people with an empty digest
 
@@ -92,6 +92,22 @@ teams:
   workflow_url: ${TEAMS_WORKFLOW_URL}
   timeout_ms: 15000
 
+# Uncomment, and add "slack" to notifications.channels, to deliver over Slack.
+# Uses chat.postMessage with a bot token rather than an incoming webhook, because
+# webhooks are tied to one channel and cannot open a direct message.
+# slack:
+#   bot_token: ${SLACK_BOT_TOKEN} # xoxb-…, needs the chat:write scope
+#   api_url: https://slack.com/api
+#   timeout_ms: 15000
+
+# Uncomment, and add "telegram" to notifications.channels, to deliver over Telegram.
+# Each person must message the bot once before they have a chat ID.
+# telegram:
+#   bot_token: ${TELEGRAM_BOT_TOKEN} # from @BotFather
+#   api_url: https://api.telegram.org
+#   timeout_ms: 15000
+#   disable_notification: false # true delivers without the notification ping
+
 # Seed list mapping GitLab usernames to delivery addresses. After the first start
 # these are managed in the admin panel; entries here act as defaults. People who
 # appear on merge requests but are missing from this list are skipped and shown at
@@ -100,6 +116,8 @@ recipients:
   - gitlab_username: alice
     email: alice@example.com
     teams_upn: alice@example.com
+    slack_id: U012ABCDEF # Slack profile → More → Copy member ID
+    telegram_chat_id: '987654321'
     channels: [email, teams] # omit to use notifications.channels
   - gitlab_username: bob
     email: bob@example.com

@@ -1,8 +1,8 @@
 # MergeRequestAlarm
 
 Tells people which merge requests on your self-hosted GitLab are waiting for **them** — as
-reviewer, assignee, or thread participant — as one digest per person, by email or Microsoft
-Teams.
+reviewer, assignee, or thread participant — as one digest per person, by email, Microsoft
+Teams, Slack, or Telegram.
 
 GitLab's own to-do list is easy to ignore and its notification emails arrive per event, so
 they get filtered away. This sends one message a day that says exactly what is blocked on
@@ -25,6 +25,7 @@ you and for how long.
 - [Configuration](#configuration)
 - [Silencing](#silencing)
 - [The admin panel](#the-admin-panel)
+- [Notification channels](#notification-channels)
 - [Setting up the Teams workflow](#setting-up-the-teams-workflow)
 - [Commands](#commands)
 - [Running as a scheduled job instead](#running-as-a-scheduled-job-instead)
@@ -250,6 +251,60 @@ in front, or set `MRA_ADMIN_HOST`.
 Every mutating action follows the same path — validate, write, record an audit row,
 redirect — so no configuration change escapes the audit log, and each row carries the
 before and after values.
+
+## Notification channels
+
+Four are built in. Every channel sends **one message per person**, containing only that
+person's merge requests.
+
+| Channel | Delivers as | Needs | Per-person identifier |
+| --- | --- | --- | --- |
+| **Email** | HTML mail with a plaintext alternative | SMTP host, and credentials if your relay wants them | Email address |
+| **Teams** | Adaptive Card via a Power Automate flow | One workflow URL | UPN, which your flow routes on |
+| **Slack** | Block Kit message, delivered as a DM from the bot | Bot token (`xoxb-…`) with `chat:write` | Member ID (`U…`) |
+| **Telegram** | HTML message from your bot | Bot token from @BotFather | Numeric chat ID |
+
+Switch a channel on by adding it to `notifications.channels` and filling in its config
+section. A person is only sent on a channel they have an address for, so a half-filled
+recipient silently narrows rather than erroring — the admin panel shows which addresses
+are missing.
+
+### Slack
+
+Uses `chat.postMessage` with a **bot token**, not an incoming webhook. Webhooks are bound
+to a single channel and cannot open a direct message; posting with a member ID as the
+`channel` opens the bot's DM with that person, which is what a personal digest wants.
+
+1. Create a Slack app, add the **`chat:write`** bot scope, install it to the workspace.
+2. Put the bot token (`xoxb-…`) in `SLACK_BOT_TOKEN`.
+3. For each person, copy their **member ID** from their Slack profile → *More* →
+   *Copy member ID*. It looks like `U012ABCDEF` — the `@handle` will not work.
+
+The bot does not need to be invited to any channel to send direct messages.
+
+### Telegram
+
+Telegram bots **cannot start a conversation**. Each person must message the bot once
+before a chat ID exists for them — that is the one bit of setup you cannot do centrally.
+
+1. Create a bot with [@BotFather](https://t.me/BotFather), put the token in
+   `TELEGRAM_BOT_TOKEN`.
+2. Ask each person to send the bot any message.
+3. Read their chat ID from `https://api.telegram.org/bot<TOKEN>/getUpdates` and put it in
+   their recipient entry.
+
+Messages use HTML rather than MarkdownV2, because MarkdownV2 requires escaping a long list
+of characters that appear constantly in merge request titles, and a single missed escape
+rejects the whole message. Anything over Telegram's 4096-character limit is cut on a line
+boundary with a note.
+
+### Adding another channel
+
+Channel-specific behaviour lives in two files: `src/notify/channels.ts` (address field,
+label, form metadata) and `src/notify/factory.ts` (how to build the notifier). Add an entry
+to each, a `Notifier` implementation, and a renderer in `src/notify/render.ts`. The
+recipients page, the address resolution, the dry-run printer and the config validation are
+all driven from that registry, so they need no edit.
 
 ## Setting up the Teams workflow
 

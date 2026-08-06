@@ -5,7 +5,7 @@ import { generateSessionSecret } from './admin/auth.js';
 import { ConfigError } from './config/load.js';
 import { GitLabClient } from './gitlab/client.js';
 import { logger } from './logger.js';
-import { buildNotifiers } from './run.js';
+import { buildNotifiers } from './notify/factory.js';
 import { renderDigest } from './notify/render.js';
 import { Scheduler } from './scheduler.js';
 import { executeRun } from './run.js';

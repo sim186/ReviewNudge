@@ -1,8 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { channelSchema } from '../../config/schema.js';
+import { CHANNELS, channelSchema } from '../../config/schema.js';
 import type { RecipientRow } from '../../db/repo.js';
 import { isSnoozed } from '../../domain/silence.js';
+import { CHANNEL_LIST } from '../../notify/channels.js';
 import { type AdminContext, formList, formValue, redirectWith, render, sourceIp } from '../context.js';
 import { html, raw, type SafeHtml } from '../views/layout.js';
 
@@ -10,6 +11,11 @@ const recipientForm = z.object({
   gitlab_username: z.string().min(1).max(255),
   email: z.string().email().nullable(),
   teams_upn: z.string().min(1).max(255).nullable(),
+  slack_id: z.string().min(1).max(255).nullable(),
+  telegram_chat_id: z
+    .string()
+    .regex(/^-?\d+$/, 'Telegram chat ID is a number, which the person gets by messaging the bot')
+    .nullable(),
   channels: z.array(channelSchema).nullable(),
   snooze_until: z
     .string()
@@ -29,19 +35,27 @@ function recipientRow(r: RecipientRow, timezone: string, now: Date): SafeHtml {
     <td>
       <form method="post" action="/recipients/save" class="row">
         <input type="hidden" name="gitlab_username" value="${r.gitlab_username}" />
-        <div class="field">
-          <label>Email</label>
-          <input name="email" type="email" value="${r.email ?? ''}" size="24" placeholder="none" />
-        </div>
-        <div class="field">
-          <label>Teams UPN</label>
-          <input name="teams_upn" value="${r.teams_upn ?? ''}" size="24" placeholder="none" />
-        </div>
+        ${CHANNEL_LIST.map(
+          (spec) => html`<div class="field">
+            <label>${spec.label}</label>
+            <input
+              name="${spec.field.name}"
+              type="${spec.field.type}"
+              value="${spec.address(r) ?? ''}"
+              size="22"
+              placeholder="none"
+            />
+          </div>`,
+        )}
         <div class="field">
           <label>Channels</label>
-          <select name="channels" multiple size="2">
-            <option value="email" ${r.channels?.includes('email') ? 'selected' : ''}>email</option>
-            <option value="teams" ${r.channels?.includes('teams') ? 'selected' : ''}>teams</option>
+          <select name="channels" multiple size="${CHANNELS.length}">
+            ${CHANNEL_LIST.map(
+              (spec) =>
+                html`<option value="${spec.id}" ${r.channels?.includes(spec.id) ? 'selected' : ''}>
+                  ${spec.id}
+                </option>`,
+            )}
           </select>
         </div>
         <div class="field">
@@ -102,14 +116,12 @@ export function registerRecipients(app: FastifyInstance, ctx: AdminContext): voi
                       <td>
                         <form method="post" action="/recipients/save" class="row">
                           <input type="hidden" name="gitlab_username" value="${username}" />
-                          <div class="field">
-                            <label>Email</label>
-                            <input name="email" type="email" size="24" />
-                          </div>
-                          <div class="field">
-                            <label>Teams UPN</label>
-                            <input name="teams_upn" size="24" />
-                          </div>
+                          ${CHANNEL_LIST.map(
+                            (spec) => html`<div class="field">
+                              <label>${spec.label}</label>
+                              <input name="${spec.field.name}" type="${spec.field.type}" size="20" />
+                            </div>`,
+                          )}
                           <button type="submit">Add</button>
                         </form>
                       </td>
@@ -151,14 +163,18 @@ export function registerRecipients(app: FastifyInstance, ctx: AdminContext): voi
             <label for="new-username">GitLab username</label>
             <input id="new-username" name="gitlab_username" required size="20" />
           </div>
-          <div class="field">
-            <label for="new-email">Email</label>
-            <input id="new-email" name="email" type="email" size="26" />
-          </div>
-          <div class="field">
-            <label for="new-teams">Teams UPN</label>
-            <input id="new-teams" name="teams_upn" size="26" />
-          </div>
+          ${CHANNEL_LIST.map(
+            (spec) => html`<div class="field">
+              <label for="new-${spec.field.name}">${spec.label}</label>
+              <input
+                id="new-${spec.field.name}"
+                name="${spec.field.name}"
+                type="${spec.field.type}"
+                placeholder="${spec.field.placeholder}"
+                size="22"
+              />
+            </div>`,
+          )}
           <button type="submit">Add</button>
         </form>
       </div>
@@ -179,8 +195,9 @@ export function registerRecipients(app: FastifyInstance, ctx: AdminContext): voi
 
     const parsed = recipientForm.safeParse({
       gitlab_username: formValue(body.gitlab_username) ?? '',
-      email: formValue(body.email),
-      teams_upn: formValue(body.teams_upn),
+      ...Object.fromEntries(
+        CHANNEL_LIST.map((spec) => [spec.field.name, formValue(body[spec.field.name])]),
+      ),
       channels: channels.length > 0 ? channels : null,
       snooze_until: formValue(body.snooze_until),
     });

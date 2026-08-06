@@ -16,6 +16,8 @@ export interface RecipientRow {
   gitlab_username: string;
   email: string | null;
   teams_upn: string | null;
+  slack_id: string | null;
+  telegram_chat_id: string | null;
   channels: Channel[] | null;
   snooze_until: string | null;
   enabled: boolean;
@@ -87,6 +89,8 @@ interface RawRecipient {
   gitlab_username: string;
   email: string | null;
   teams_upn: string | null;
+  slack_id: string | null;
+  telegram_chat_id: string | null;
   channels: string | null;
   snooze_until: string | null;
   enabled: number;
@@ -106,6 +110,8 @@ function toRecipient(row: RawRecipient): RecipientRow {
     gitlab_username: row.gitlab_username,
     email: row.email,
     teams_upn: row.teams_upn,
+    slack_id: row.slack_id,
+    telegram_chat_id: row.telegram_chat_id,
     channels: row.channels ? (JSON.parse(row.channels) as Channel[]) : null,
     snooze_until: row.snooze_until,
     enabled: row.enabled === 1,
@@ -211,11 +217,14 @@ export class Repo {
   upsertRecipient(r: Omit<RecipientRow, 'enabled'> & { enabled?: boolean }): RecipientRow {
     this.db
       .prepare(
-        `INSERT INTO recipients (gitlab_username, email, teams_upn, channels, snooze_until, enabled, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+        `INSERT INTO recipients
+           (gitlab_username, email, teams_upn, slack_id, telegram_chat_id, channels, snooze_until, enabled, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
          ON CONFLICT (gitlab_username) DO UPDATE SET
            email = excluded.email,
            teams_upn = excluded.teams_upn,
+           slack_id = excluded.slack_id,
+           telegram_chat_id = excluded.telegram_chat_id,
            channels = excluded.channels,
            snooze_until = excluded.snooze_until,
            enabled = excluded.enabled,
@@ -225,6 +234,8 @@ export class Repo {
         r.gitlab_username,
         r.email,
         r.teams_upn,
+        r.slack_id,
+        r.telegram_chat_id,
         r.channels ? JSON.stringify(r.channels) : null,
         r.snooze_until,
         r.enabled === false ? 0 : 1,
@@ -245,8 +256,9 @@ export class Repo {
    */
   seedRecipients(recipients: RecipientConfig[]): number {
     const insert = this.db.prepare(
-      `INSERT INTO recipients (gitlab_username, email, teams_upn, channels, snooze_until)
-       VALUES (?, ?, ?, ?, ?)
+      `INSERT INTO recipients
+         (gitlab_username, email, teams_upn, slack_id, telegram_chat_id, channels, snooze_until)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (gitlab_username) DO NOTHING`,
     );
     const run = this.db.transaction((rows: RecipientConfig[]) => {
@@ -256,6 +268,8 @@ export class Repo {
           r.gitlab_username,
           r.email,
           r.teams_upn,
+          r.slack_id,
+          r.telegram_chat_id,
           r.channels ? JSON.stringify(r.channels) : null,
           r.snooze_until,
         );
