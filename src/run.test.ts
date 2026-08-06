@@ -348,6 +348,122 @@ teams:
     expect(failed[0]?.detail).toContain('550');
   });
 
+  it('drops an item the recipient muted, without touching anyone else', async () => {
+    const provider = harness();
+    repo.upsertRecipient({
+      gitlab_username: 'bob',
+      email: 'bob@example.com',
+      teams_upn: null,
+      channels: null,
+      snooze_until: null,
+    });
+    repo.upsertUserMute({
+      gitlab_username: 'alice',
+      mr_url: 'https://gitlab.example.com/engineering/core/-/merge_requests/1',
+      mr_title: 'MR 1',
+      mode: 'forever',
+      until: null,
+      baseline: null,
+    });
+
+    const notifier = new RecordingNotifier('email');
+    const summary = await executeRun(provider, repo, audit, {
+      trigger: 'cli',
+      now: NOW,
+      logger: silent,
+      clientFactory: () =>
+        clientFor([
+          mr('1', {
+            reviewers: { nodes: [participant('alice', 'UNREVIEWED'), participant('bob', 'UNREVIEWED')] },
+          }),
+        ]),
+      notifierFactory: () => new Map([['email', notifier]]),
+    });
+
+    expect(summary.personallyMuted).toBe(1);
+    expect(notifier.sent.map((d) => d.username)).toEqual(['bob']);
+  });
+
+  it('still records a muted item in the snapshot, so it is not invisible', async () => {
+    const provider = harness();
+    repo.upsertUserMute({
+      gitlab_username: 'alice',
+      mr_url: 'https://gitlab.example.com/engineering/core/-/merge_requests/1',
+      mr_title: 'MR 1',
+      mode: 'forever',
+      until: null,
+      baseline: null,
+    });
+
+    await executeRun(provider, repo, audit, {
+      trigger: 'cli',
+      now: NOW,
+      logger: silent,
+      clientFactory: () => clientFor([mr('1')]),
+      notifierFactory: () => new Map([['email', new RecordingNotifier('email')]]),
+    });
+
+    const snapshot = repo.snapshotForRun(repo.latestCompletedRun()!.id);
+    expect(snapshot).toEqual([
+      expect.objectContaining({
+        gitlab_username: 'alice',
+        deliverable: false,
+        skip_reason: 'muted by recipient',
+      }),
+    ]);
+  });
+
+  it('resumes notifying and clears the mute once it lapses', async () => {
+    const provider = harness();
+    repo.upsertUserMute({
+      gitlab_username: 'alice',
+      mr_url: 'https://gitlab.example.com/engineering/core/-/merge_requests/1',
+      mr_title: 'MR 1',
+      mode: 'until',
+      until: '2026-08-01T00:00:00Z', // already past at NOW
+      baseline: null,
+    });
+
+    const notifier = new RecordingNotifier('email');
+    const summary = await executeRun(provider, repo, audit, {
+      trigger: 'cli',
+      now: NOW,
+      logger: silent,
+      clientFactory: () => clientFor([mr('1')]),
+      notifierFactory: () => new Map([['email', notifier]]),
+    });
+
+    expect(summary.personallyMuted).toBe(0);
+    expect(notifier.sent).toHaveLength(1);
+    // The lapsed row is tidied away rather than lingering forever.
+    expect(repo.listUserMutes('alice')).toHaveLength(0);
+  });
+
+  it('ends an until-it-changes mute after a newer push', async () => {
+    const provider = harness();
+    repo.upsertUserMute({
+      gitlab_username: 'alice',
+      mr_url: 'https://gitlab.example.com/engineering/core/-/merge_requests/1',
+      mr_title: 'MR 1',
+      mode: 'until_change',
+      until: null,
+      baseline: { lastPushAt: ago(9), notesCount: 0 },
+    });
+
+    const notifier = new RecordingNotifier('email');
+    await executeRun(provider, repo, audit, {
+      trigger: 'cli',
+      now: NOW,
+      logger: silent,
+      // The fixture pushes at ago(3), newer than the ago(9) baseline.
+      clientFactory: () => clientFor([mr('1')]),
+      notifierFactory: () => new Map([['email', notifier]]),
+    });
+
+    expect(notifier.sent).toHaveLength(1);
+    expect(repo.listUserMutes('alice')).toHaveLength(0);
+  });
+
   it('marks the run failed and rethrows when GitLab is unreachable', async () => {
     const provider = harness();
     const brokenClient = new GitLabClient({

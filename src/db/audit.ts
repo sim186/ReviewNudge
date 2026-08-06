@@ -1,6 +1,6 @@
 import type { Db } from './migrate.js';
 
-export type Actor = 'admin' | 'scheduler' | 'cli' | 'system';
+export type Actor = 'admin' | 'recipient' | 'scheduler' | 'cli' | 'system';
 
 export interface AuditEntry {
   actor: Actor;

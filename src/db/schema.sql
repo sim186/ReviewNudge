@@ -39,6 +39,29 @@ CREATE TABLE IF NOT EXISTS recipients (
   updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Mutes a recipient set for themselves, from a link in their own digest. These are
+-- personal: muting a merge request here silences it for that person only, unlike the
+-- admin-level 'muted_mr' exclusion above which hides it from everyone.
+--
+-- mode:
+--   'until_change' — until new commits or comments arrive, compared against `baseline`
+--   'until'        — until the `until` timestamp passes
+--   'forever'      — until the person un-mutes it
+CREATE TABLE IF NOT EXISTS user_mutes (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  gitlab_username TEXT NOT NULL,
+  mr_url          TEXT NOT NULL,          -- normalised, see normaliseMrUrl
+  mr_title        TEXT,                   -- for display on the self-service page
+  mode            TEXT NOT NULL CHECK (mode IN ('until_change', 'until', 'forever')),
+  until           TEXT,                   -- ISO timestamp when mode = 'until'
+  baseline        TEXT,                   -- JSON fingerprint when mode = 'until_change'
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  created_by      TEXT NOT NULL DEFAULT 'recipient',
+  UNIQUE (gitlab_username, mr_url)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_mutes_user ON user_mutes (gitlab_username);
+
 -- One row per scan cycle.
 CREATE TABLE IF NOT EXISTS runs (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,

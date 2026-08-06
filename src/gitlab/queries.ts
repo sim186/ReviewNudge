@@ -71,6 +71,7 @@ query GroupMergeRequests(
         updatedAt
         approved
         approvalsLeft
+        userNotesCount
         userDiscussionsCount
         resolvedDiscussionsCount
         project { fullPath archived }

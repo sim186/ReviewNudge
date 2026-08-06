@@ -95,6 +95,11 @@ main {
   padding: 20px;
 }
 
+/* Recipient-facing pages: one column, easier to read on a phone. */
+main.narrow {
+  max-width: 640px;
+}
+
 /* ---------------------------------------------------------------- blocks */
 
 .card {

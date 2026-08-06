@@ -81,7 +81,7 @@ export function registerAudit(app: FastifyInstance, ctx: AdminContext): void {
             <label for="actor">Actor</label>
             <select id="actor" name="actor">
               <option value="">any</option>
-              ${['admin', 'scheduler', 'cli', 'system'].map(
+              ${['admin', 'recipient', 'scheduler', 'cli', 'system'].map(
                 (a) => html`<option value="${a}" ${query.actor === a ? 'selected' : ''}>${a}</option>`,
               )}
             </select>

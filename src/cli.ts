@@ -35,6 +35,11 @@ function parseArgs(argv: string[]): Args {
   return { command, flags };
 }
 
+/** The stable secret used for both admin sessions and recipient links. */
+function resolveSecret(config: { admin: { session_secret: string } }): string {
+  return config.admin.session_secret || process.env.MRA_SESSION_SECRET || '';
+}
+
 function flagString(args: Args, ...names: string[]): string | undefined {
   for (const name of names) {
     const value = args.flags.get(name);
@@ -63,7 +68,8 @@ Options:
       --recipient <u>   GitLab username to send the sample to
 
 Environment:
-  MRA_CONFIG, MRA_DATA_DIR, MRA_DRY_RUN, MRA_SILENCE, LOG_LEVEL, LOG_FORMAT
+  MRA_CONFIG, MRA_DATA_DIR, MRA_DRY_RUN, MRA_SILENCE, MRA_ADMIN_HOST,
+  MRA_ADMIN_PASSWORD, MRA_SESSION_SECRET, LOG_LEVEL, LOG_FORMAT
 `;
 
 async function commandCheckConfig(args: Args): Promise<number> {
@@ -122,6 +128,7 @@ async function commandRun(args: Args): Promise<number> {
       trigger: 'cli',
       dryRun,
       logger,
+      selfServiceSecret: resolveSecret(app.provider.resolve()),
     });
 
     for (const group of summary.undeliverable) {
@@ -174,6 +181,7 @@ async function commandTestNotify(args: Args): Promise<number> {
           updatedAt: now.toISOString(),
           lastPushAt: now.toISOString(),
           labels: [],
+          notesCount: 0,
         },
         kinds: ['REVIEW_REQUESTED'],
         waitingSince: new Date(now.getTime() - 4 * 86_400_000).toISOString(),
@@ -223,18 +231,22 @@ async function commandServe(args: Args): Promise<number> {
   const config = app.provider.resolve();
   const dryRun = flagBool(args, 'dry-run') || process.env.MRA_DRY_RUN === '1';
 
-  const scheduler = new Scheduler(app.provider, app.repo, app.audit, { dryRun, logger });
+  const sessionSecret = resolveSecret(config);
+  if (!sessionSecret) {
+    logger.warn(
+      'no admin session secret set: sessions will not survive a restart, and digests will carry no self-service mute links',
+    );
+  }
+
+  const scheduler = new Scheduler(app.provider, app.repo, app.audit, {
+    dryRun,
+    logger,
+    selfServiceSecret: sessionSecret,
+  });
   scheduler.start();
 
   let server: Awaited<ReturnType<typeof startAdminServer>> | null = null;
   if (config.admin.enabled) {
-    // The environment is honoured even when config.yaml does not reference it, so
-    // setting MRA_SESSION_SECRET alone does what an operator expects.
-    const sessionSecret = config.admin.session_secret || process.env.MRA_SESSION_SECRET || '';
-    if (!sessionSecret) {
-      logger.warn('no admin session secret set; sessions will not survive a restart');
-    }
-
     server = await startAdminServer(
       { provider: app.provider, repo: app.repo, audit: app.audit, scheduler, logger },
       {

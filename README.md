@@ -155,14 +155,18 @@ accounts and conventionally named ones such as `renovate-bot`.
 
 ## Silencing
 
-Four independent mechanisms, applied in this order:
+Five independent mechanisms, applied in this order:
 
 | # | Mechanism | Effect | Still scans? |
 | --- | --- | --- | --- |
 | 1 | **Global pause** (`silence.enabled`, the panel toggle, or `MRA_SILENCE=1`) | Nothing is delivered to anyone | **Yes** — so Pending stays accurate and the audit log records what was withheld |
 | 2 | **Holiday**, then **non-working day**, then **quiet hours** | The whole run is skipped | No |
-| 3 | **Per-recipient snooze** (`snooze_until`) | That person's digest is dropped | Yes |
-| 4 | **Muted merge requests** and **excluded labels** | Those merge requests never enter any digest | Yes |
+| 3 | **Per-recipient snooze** (`snooze_until`, or the recipient pausing themselves) | That person's digest is dropped | Yes |
+| 4 | **Personal mutes** set by a recipient | That merge request is dropped from *that person's* digest only | Yes |
+| 5 | **Muted merge requests** and **excluded labels** set by an admin | Those merge requests never enter *anyone's* digest | Yes |
+
+Levels 4 and 5 are deliberately distinct. A recipient going quiet about a merge request
+must never silence it for their colleagues; only an administrator can do that.
 
 Quiet hours may wrap midnight (`18:00` → `08:00`) and are evaluated in
 `schedule.timezone`, so they follow wall-clock time across daylight-saving changes. Setting
@@ -174,6 +178,50 @@ August, and a digest again on 1 September.
 
 `MRA_SILENCE=1` can force silence **on** but never off, so it cannot quietly defeat the
 panel toggle.
+
+## Muting things yourself
+
+Recipients do not need the admin panel, or an account, to quieten their own reminders.
+Every digest carries a **Mute this one** link per merge request and a **Mute one of these,
+or pause everything** link at the bottom.
+
+- **Mute one merge request** — until something changes (new commits or comments), for 1
+  day, 3 days, 1 week or 2 weeks, until a date you pick, or permanently.
+- **Pause everything** — for a period or until a date, for when you are away. There is no
+  indefinite option on purpose: a pause that never ends is how people quietly stop hearing
+  about work forever.
+- **Undo** — the "your notifications" page lists everything you have muted, with an
+  un-mute button, and shows when each mute lapses.
+
+Clicking a mute link opens a confirmation page; the mute only happens when you press the
+button. That matters because mail scanners such as Outlook Safe Links follow links
+automatically, and a one-click GET would let them mute things on your behalf.
+
+Personal mutes affect **you alone**. Your colleagues keep getting their own reminders, the
+merge request is untouched in GitLab, and the item still appears on the admin Pending page
+flagged as *muted by recipient*, so nothing silently disappears. Every mute, un-mute and
+self-service pause lands in the audit log with the actor `recipient`.
+
+### Setting it up
+
+Two things must be true for the links to appear:
+
+1. **A stable signing secret.** Set `MRA_SESSION_SECRET` (or `admin.session_secret`). The
+   links are signed with it; without one, digests go out with no links rather than links
+   that break on the next restart. Rotating the secret invalidates every outstanding link,
+   which is how you revoke them.
+2. **An address recipients can reach.** Links are built from `admin.host` and `admin.port`.
+   With the default `127.0.0.1` binding they would point at the recipient's own machine, so
+   no links are emitted and a warning is logged. Set `admin.host` to the hostname people
+   will actually use.
+
+A recipient token grants exactly three things — mute, un-mute, and pause yourself — for one
+person. It never reaches the admin panel, which keeps its own password.
+
+> Because links come from `admin.host`, that one value is both the bind address and the
+> public hostname. If you need to bind to `0.0.0.0` while linking to a real hostname (in
+> Docker, for instance), that combination is not currently expressible; a separate
+> `public_url` setting would be a small addition.
 
 ## The admin panel
 

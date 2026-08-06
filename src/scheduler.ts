@@ -8,6 +8,8 @@ import { executeRun, type RunSummary } from './run.js';
 export interface SchedulerOptions {
   dryRun?: boolean;
   logger?: Logger;
+  /** Signs the per-recipient mute links in a digest. */
+  selfServiceSecret?: string;
 }
 
 /**
@@ -94,6 +96,7 @@ export class Scheduler {
         trigger,
         dryRun: overrides.dryRun ?? this.options.dryRun ?? false,
         logger: this.log,
+        selfServiceSecret: this.options.selfServiceSecret,
       });
     } catch (err) {
       // executeRun has already recorded and logged the failure; the loop survives it.

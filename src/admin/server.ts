@@ -20,6 +20,7 @@ import { registerExclusions } from './routes/exclusions.js';
 import { registerPending } from './routes/pending.js';
 import { registerRecipients } from './routes/recipients.js';
 import { registerSettings } from './routes/settings.js';
+import { registerSelfService } from './routes/selfservice.js';
 import { registerSilence } from './routes/silence.js';
 import { loginPage } from './views/layout.js';
 
@@ -41,10 +42,11 @@ export function buildAdminServer(ctx: AdminContext, options: AdminServerOptions)
   app.register(formbody);
   app.register(fastifyStatic, { root: resolve(here, 'public'), prefix: '/static/' });
 
-  // Everything except the login form and the stylesheet needs a session.
+  // Everything except the login form, the stylesheet and the recipient self-service
+  // routes needs a session. `/me/*` carries its own signed token instead.
   app.addHook('onRequest', async (request, reply) => {
     const path = request.url.split('?')[0]!;
-    if (PUBLIC_PATHS.has(path) || path.startsWith('/static/')) return;
+    if (PUBLIC_PATHS.has(path) || path.startsWith('/static/') || path.startsWith('/me/')) return;
     if (hasValidSession(request, sessionOptions)) return;
 
     if (request.method === 'GET') {
@@ -95,6 +97,7 @@ export function buildAdminServer(ctx: AdminContext, options: AdminServerOptions)
   registerSilence(app, ctx);
   registerAudit(app, ctx);
   registerSettings(app, ctx);
+  registerSelfService(app, ctx, { secret: options.sessionSecret });
 
   app.setErrorHandler(async (error: unknown, request, reply) => {
     const message = error instanceof Error ? error.message : String(error);

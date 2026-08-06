@@ -21,6 +21,37 @@ export interface RecipientRow {
   enabled: boolean;
 }
 
+export type MuteMode = 'until_change' | 'until' | 'forever';
+
+/** Fingerprint of a merge request at mute time, for `until_change` mutes. */
+export interface MuteBaseline {
+  lastPushAt: string | null;
+  notesCount: number | null;
+}
+
+export interface UserMuteRow {
+  id: number;
+  gitlab_username: string;
+  mr_url: string;
+  mr_title: string | null;
+  mode: MuteMode;
+  until: string | null;
+  baseline: MuteBaseline | null;
+  created_at: string;
+  created_by: string;
+}
+
+interface RawUserMute extends Omit<UserMuteRow, 'baseline'> {
+  baseline: string | null;
+}
+
+function toUserMute(row: RawUserMute): UserMuteRow {
+  return {
+    ...row,
+    baseline: row.baseline ? (JSON.parse(row.baseline) as MuteBaseline) : null,
+  };
+}
+
 export type RunStatus = 'running' | 'ok' | 'partial' | 'failed' | 'skipped';
 export type RunTrigger = 'schedule' | 'manual' | 'cli';
 
@@ -233,6 +264,86 @@ export class Repo {
       return inserted;
     });
     return run(recipients);
+  }
+
+  // -------------------------------------------------------------- user mutes
+
+  /** Every mute a person currently has, newest first. */
+  listUserMutes(username: string): UserMuteRow[] {
+    const rows = this.db
+      .prepare('SELECT * FROM user_mutes WHERE gitlab_username = ? ORDER BY created_at DESC')
+      .all(username) as RawUserMute[];
+    return rows.map(toUserMute);
+  }
+
+  /** All mutes, for the run cycle to apply in one pass. */
+  allUserMutes(): UserMuteRow[] {
+    const rows = this.db.prepare('SELECT * FROM user_mutes').all() as RawUserMute[];
+    return rows.map(toUserMute);
+  }
+
+  getUserMute(username: string, mrUrl: string): UserMuteRow | null {
+    const row = this.db
+      .prepare('SELECT * FROM user_mutes WHERE gitlab_username = ? AND mr_url = ?')
+      .get(username, mrUrl) as RawUserMute | undefined;
+    return row ? toUserMute(row) : null;
+  }
+
+  /** Creates or replaces a person's mute for one merge request. */
+  upsertUserMute(mute: {
+    gitlab_username: string;
+    mr_url: string;
+    mr_title: string | null;
+    mode: MuteMode;
+    until: string | null;
+    baseline: MuteBaseline | null;
+    created_by?: string;
+  }): UserMuteRow {
+    this.db
+      .prepare(
+        `INSERT INTO user_mutes (gitlab_username, mr_url, mr_title, mode, until, baseline, created_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+         ON CONFLICT (gitlab_username, mr_url) DO UPDATE SET
+           mr_title = excluded.mr_title,
+           mode = excluded.mode,
+           until = excluded.until,
+           baseline = excluded.baseline,
+           created_by = excluded.created_by,
+           created_at = excluded.created_at`,
+      )
+      .run(
+        mute.gitlab_username,
+        mute.mr_url,
+        mute.mr_title,
+        mute.mode,
+        mute.until,
+        mute.baseline ? JSON.stringify(mute.baseline) : null,
+        mute.created_by ?? 'recipient',
+      );
+    return this.getUserMute(mute.gitlab_username, mute.mr_url)!;
+  }
+
+  /** Returns the removed mute, or null when there was nothing to remove. */
+  removeUserMute(username: string, mrUrl: string): UserMuteRow | null {
+    const existing = this.getUserMute(username, mrUrl);
+    if (!existing) return null;
+    this.db
+      .prepare('DELETE FROM user_mutes WHERE gitlab_username = ? AND mr_url = ?')
+      .run(username, mrUrl);
+    return existing;
+  }
+
+  /** Drops mutes that can no longer suppress anything, keeping the table tidy. */
+  deleteExpiredUserMutes(expired: { gitlab_username: string; mr_url: string }[]): number {
+    const stmt = this.db.prepare(
+      'DELETE FROM user_mutes WHERE gitlab_username = ? AND mr_url = ?',
+    );
+    const run = this.db.transaction((rows: typeof expired) => {
+      let removed = 0;
+      for (const row of rows) removed += stmt.run(row.gitlab_username, row.mr_url).changes;
+      return removed;
+    });
+    return run(expired);
   }
 
   // -------------------------------------------------------------------- runs

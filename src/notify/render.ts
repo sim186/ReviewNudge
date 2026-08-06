@@ -1,6 +1,14 @@
 import type { Digest, DigestItem } from '../domain/digest.js';
 import type { ReasonKind } from '../domain/reasons.js';
 
+/** Links that let the recipient act on their own notifications. */
+export interface SelfServiceLinks {
+  /** Per merge request URL, the page that offers to mute it. */
+  mute: (mrUrl: string) => string;
+  /** The recipient's own notifications page. */
+  manage: string;
+}
+
 export interface RenderedDigest {
   subject: string;
   text: string;
@@ -74,7 +82,7 @@ function truncationNote(digest: Digest): string | null {
 
 // -------------------------------------------------------------------- text
 
-function renderText(digest: Digest): string {
+function renderText(digest: Digest, links?: SelfServiceLinks | null): string {
   const lines: string[] = [];
   lines.push(
     digest.totalItems === 1
@@ -88,19 +96,24 @@ function renderText(digest: Digest): string {
     lines.push(`  ${item.mr.projectPath} !${item.mr.iid} — waiting ${waitingLabel(item.waitingDays)}`);
     lines.push(`  ${item.detail}`);
     lines.push(`  ${item.mr.url}`);
+    if (links) lines.push(`  Mute this one: ${links.mute(item.mr.url)}`);
     lines.push('');
   }
 
   const note = truncationNote(digest);
   if (note) lines.push(note, '');
 
+  if (links) {
+    lines.push(`Mute one of these, or pause everything: ${links.manage}`);
+    lines.push('');
+  }
   lines.push('— MergeRequestAlarm');
   return lines.join('\n');
 }
 
 // -------------------------------------------------------------------- html
 
-function renderRow(item: DigestItem): string {
+function renderRow(item: DigestItem, links?: SelfServiceLinks | null): string {
   const chips = item.kinds
     .map(
       (k) =>
@@ -123,6 +136,13 @@ function renderRow(item: DigestItem): string {
           )} !${escapeHtml(item.mr.iid)}</div>
           <div style="margin-top:6px;">${chips}</div>
           <div style="color:#3a4a5e;font-size:13px;margin-top:6px;">${escapeHtml(item.detail)}</div>
+          ${
+            links
+              ? `<div style="margin-top:6px;"><a href="${escapeHtml(
+                  links.mute(item.mr.url),
+                )}" style="color:#6b7684;text-decoration:underline;font-size:12px;">Mute this one</a></div>`
+              : ''
+          }
         </td>
         <td style="padding:10px 12px;border-bottom:1px solid #e6e9ee;vertical-align:top;text-align:right;white-space:nowrap;color:${
           urgent ? '#b3261e' : '#6b7684'
@@ -132,7 +152,7 @@ function renderRow(item: DigestItem): string {
       </tr>`;
 }
 
-function renderHtml(digest: Digest): string {
+function renderHtml(digest: Digest, links?: SelfServiceLinks | null): string {
   const heading =
     digest.totalItems === 1
       ? '1 merge request is waiting for your input'
@@ -150,7 +170,7 @@ function renderHtml(digest: Digest): string {
           <div style="color:#6b7684;font-size:12px;margin-top:2px;">Sorted by how long they have been waiting.</div>
         </td>
       </tr>
-      ${digest.items.map(renderRow).join('')}
+      ${digest.items.map((item) => renderRow(item, links)).join('')}
       ${
         note
           ? `<tr><td colspan="2" style="padding:10px 12px;color:#6b7684;font-size:12px;">${escapeHtml(note)}</td></tr>`
@@ -158,7 +178,12 @@ function renderHtml(digest: Digest): string {
       }
       <tr>
         <td colspan="2" style="padding:12px;color:#8b95a1;font-size:11px;border-top:1px solid #e6e9ee;">
-          Sent by MergeRequestAlarm. To stop these, snooze yourself or mute a merge request in the admin panel.
+          Sent by MergeRequestAlarm.
+          ${
+            links
+              ? `<a href="${escapeHtml(links.manage)}" style="color:#6b7684;">Mute one of these, or pause everything.</a>`
+              : 'To stop these, ask an administrator to snooze you or mute a merge request.'
+          }
         </td>
       </tr>
     </table>
@@ -168,7 +193,7 @@ function renderHtml(digest: Digest): string {
 
 // -------------------------------------------------------------------- card
 
-function cardItemBlocks(item: DigestItem): Record<string, unknown>[] {
+function cardItemBlocks(item: DigestItem, links?: SelfServiceLinks | null): Record<string, unknown>[] {
   const kinds = item.kinds.map((k) => KIND_LABEL[k]).join(' · ');
   return [
     {
@@ -199,6 +224,18 @@ function cardItemBlocks(item: DigestItem): Record<string, unknown>[] {
               wrap: true,
               size: 'Small',
             },
+            ...(links
+              ? [
+                  {
+                    type: 'TextBlock',
+                    text: `[Mute this one](${links.mute(item.mr.url)})`,
+                    wrap: true,
+                    isSubtle: true,
+                    spacing: 'None',
+                    size: 'Small',
+                  },
+                ]
+              : []),
           ],
         },
         {
@@ -220,7 +257,11 @@ function cardItemBlocks(item: DigestItem): Record<string, unknown>[] {
   ];
 }
 
-function buildCard(digest: Digest, items: DigestItem[]): Record<string, unknown> {
+function buildCard(
+  digest: Digest,
+  items: DigestItem[],
+  links?: SelfServiceLinks | null,
+): Record<string, unknown> {
   const heading =
     digest.totalItems === 1
       ? '1 merge request is waiting for your input'
@@ -228,7 +269,7 @@ function buildCard(digest: Digest, items: DigestItem[]): Record<string, unknown>
 
   const body: Record<string, unknown>[] = [
     { type: 'TextBlock', text: heading, weight: 'Bolder', size: 'Medium', wrap: true },
-    ...items.flatMap(cardItemBlocks),
+    ...items.flatMap((item) => cardItemBlocks(item, links)),
   ];
 
   const hidden = digest.totalItems - items.length;
@@ -249,11 +290,16 @@ function buildCard(digest: Digest, items: DigestItem[]): Record<string, unknown>
     body,
     // Buttons are capped: Teams renders only a handful well, and every item is
     // already a link in its own row.
-    actions: items.slice(0, MAX_CARD_ACTIONS).map((item) => ({
-      type: 'Action.OpenUrl',
-      title: item.mr.title.length > 40 ? `${item.mr.title.slice(0, 39)}…` : item.mr.title,
-      url: item.mr.url,
-    })),
+    actions: [
+      ...items.slice(0, MAX_CARD_ACTIONS).map((item) => ({
+        type: 'Action.OpenUrl',
+        title: item.mr.title.length > 40 ? `${item.mr.title.slice(0, 39)}…` : item.mr.title,
+        url: item.mr.url,
+      })),
+      ...(links
+        ? [{ type: 'Action.OpenUrl', title: 'Mute or pause…', url: links.manage }]
+        : []),
+    ],
   };
 }
 
@@ -277,10 +323,10 @@ function wrap(digest: Digest, card: Record<string, unknown>): TeamsMessage {
  * Builds the Teams payload, shedding rows until it fits. A card Teams refuses to
  * render is worse than a card that says "12 more not shown".
  */
-function renderCard(digest: Digest): TeamsMessage {
+function renderCard(digest: Digest, links?: SelfServiceLinks | null): TeamsMessage {
   let items = digest.items;
   for (;;) {
-    const message = wrap(digest, buildCard(digest, items));
+    const message = wrap(digest, buildCard(digest, items, links));
     if (Buffer.byteLength(JSON.stringify(message), 'utf8') <= MAX_CARD_BYTES || items.length <= 1) {
       return message;
     }
@@ -288,11 +334,15 @@ function renderCard(digest: Digest): TeamsMessage {
   }
 }
 
-export function renderDigest(digest: Digest, subjectTemplate: string): RenderedDigest {
+export function renderDigest(
+  digest: Digest,
+  subjectTemplate: string,
+  links?: SelfServiceLinks | null,
+): RenderedDigest {
   return {
     subject: renderSubject(subjectTemplate, digest),
-    text: renderText(digest),
-    html: renderHtml(digest),
-    card: renderCard(digest),
+    text: renderText(digest, links),
+    html: renderHtml(digest, links),
+    card: renderCard(digest, links),
   };
 }

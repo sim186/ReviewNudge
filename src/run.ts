@@ -5,13 +5,15 @@ import type { Repo, RunTrigger, SnapshotItem } from './db/repo.js';
 import { buildDigests, type Digest, type DigestResult } from './domain/digest.js';
 import { filterMergeRequest } from './domain/filters.js';
 import { evaluateMergeRequest, type Reason } from './domain/reasons.js';
+import { applyUserMutes, indexMutes } from './domain/mutes.js';
 import { describeSilence, evaluateRunSilence } from './domain/silence.js';
 import { GitLabClient } from './gitlab/client.js';
 import type { EnrichedMergeRequest, GqlMergeRequest } from './gitlab/types.js';
 import { logger as rootLogger, type Logger } from './logger.js';
 import { ConsoleNotifier } from './notify/console.js';
 import { EmailNotifier } from './notify/email.js';
-import { renderDigest } from './notify/render.js';
+import { renderDigest, type SelfServiceLinks } from './notify/render.js';
+import { manageLink, mintRecipientToken, muteLink, selfServiceBaseUrl } from './notify/tokens.js';
 import { TeamsNotifier } from './notify/teams.js';
 import type { Notifier } from './notify/types.js';
 
@@ -24,6 +26,8 @@ export interface RunOptions {
   logger?: Logger;
   clientFactory?: (config: EffectiveConfig) => GitLabClient;
   notifierFactory?: (config: EffectiveConfig, dryRun: boolean) => Map<Channel, Notifier>;
+  /** Signs the per-recipient links in a digest. Omit to leave the links out. */
+  selfServiceSecret?: string;
 }
 
 export interface RunSummary {
@@ -35,6 +39,8 @@ export interface RunSummary {
   digestsBuilt: number;
   digestsSent: number;
   failures: number;
+  /** Reasons dropped because the person muted that merge request for themselves. */
+  personallyMuted: number;
   undeliverable: DigestResult['undeliverable'];
   dryRun: boolean;
 }
@@ -82,6 +88,30 @@ function toSnapshotItems(result: DigestResult): SnapshotItem[] {
   return items;
 }
 
+/** Muted items still appear on the Pending page, flagged, so nothing goes invisible. */
+function mutedSnapshotItems(suppressed: Reason[]): SnapshotItem[] {
+  const seen = new Set<string>();
+  const items: SnapshotItem[] = [];
+
+  for (const reason of suppressed) {
+    const key = `${reason.username} ${reason.mr.url}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    items.push({
+      gitlab_username: reason.username,
+      mr_url: reason.mr.url,
+      mr_title: reason.mr.title,
+      project_path: reason.mr.projectPath,
+      author: reason.mr.author,
+      reasons: [reason.kind],
+      waiting_since: reason.waitingSince,
+      deliverable: false,
+      skip_reason: 'muted by recipient',
+    });
+  }
+  return items;
+}
+
 /**
  * One complete cycle: scan GitLab, work out who is blocking what, and deliver.
  *
@@ -121,6 +151,7 @@ export async function executeRun(
       digestsBuilt: 0,
       digestsSent: 0,
       failures: 0,
+      personallyMuted: 0,
       undeliverable: [],
       dryRun,
     };
@@ -163,9 +194,24 @@ export async function executeRun(
 
     // -------------------------------------------------------------- reason
     const userFilter = { excludedUsers: config.exclude.users, excludeBots: config.exclude.bots };
-    const reasons: Reason[] = enriched.flatMap((mr) =>
+    const allReasons: Reason[] = enriched.flatMap((mr) =>
       evaluateMergeRequest(mr, { rules: config.rules, userFilter }),
     );
+
+    // --------------------------------------------------------- personal mutes
+    // Applied after the rules so the reasons themselves stay honest: the merge
+    // request really is waiting on this person, they have just asked not to hear
+    // about it. Only their own digest is affected.
+    const muteResult = applyUserMutes(allReasons, indexMutes(repo.allUserMutes()), now);
+    const reasons = muteResult.kept;
+
+    if (muteResult.expired.length > 0) {
+      repo.deleteExpiredUserMutes(muteResult.expired);
+      log.info({ count: muteResult.expired.length }, 'personal mutes lapsed; notifying again');
+    }
+    if (muteResult.suppressed.length > 0) {
+      log.debug({ count: muteResult.suppressed.length }, 'items suppressed by personal mutes');
+    }
 
     // -------------------------------------------------------------- digest
     const availableChannels = [...config.notifications.channels].filter(
@@ -180,7 +226,10 @@ export async function executeRun(
       now,
     });
 
-    repo.replaceSnapshot(runId, toSnapshotItems(result));
+    repo.replaceSnapshot(runId, [
+      ...toSnapshotItems(result),
+      ...mutedSnapshotItems(muteResult.suppressed),
+    ]);
     repo.pruneOldSnapshots(runId);
 
     if (result.undeliverable.length > 0) {
@@ -226,6 +275,7 @@ export async function executeRun(
         digestsBuilt: result.digests.length,
         digestsSent: 0,
         failures: 0,
+        personallyMuted: muteResult.suppressed.length,
         undeliverable: result.undeliverable,
         dryRun,
       };
@@ -235,9 +285,32 @@ export async function executeRun(
     const subjectTemplate = config.email?.subject_template ?? '{count} merge requests are waiting for you';
     const actor = options.trigger === 'schedule' ? 'scheduler' : 'cli';
 
+    // Self-service links need a reachable address and a stable secret. Without both,
+    // digests go out without them rather than carrying links that cannot work.
+    const linkBase = selfServiceBaseUrl(config.admin);
+    const secret = options.selfServiceSecret ?? '';
+    if (!linkBase && secret) {
+      log.warn(
+        { host: config.admin.host },
+        'recipients cannot reach the panel at this address, so digests carry no mute links',
+      );
+    }
+
     for (const digest of result.digests) {
       if (config.notifications.skip_empty && digest.items.length === 0) continue;
-      const rendered = renderDigest(digest, subjectTemplate);
+
+      const links: SelfServiceLinks | null =
+        linkBase && secret
+          ? (() => {
+              const token = mintRecipientToken(digest.username, secret);
+              return {
+                mute: (mrUrl: string) => muteLink(linkBase, token, mrUrl),
+                manage: manageLink(linkBase, token),
+              };
+            })()
+          : null;
+
+      const rendered = renderDigest(digest, subjectTemplate, links);
       let deliveredAny = false;
 
       for (const channel of digest.channels) {
@@ -281,7 +354,14 @@ export async function executeRun(
     });
 
     log.info(
-      { scanned: unique.size, reasons: reasons.length, digests: result.digests.length, sent, failures },
+      {
+        scanned: unique.size,
+        reasons: reasons.length,
+        muted: muteResult.suppressed.length,
+        digests: result.digests.length,
+        sent,
+        failures,
+      },
       dryRun ? 'dry run complete' : 'run complete',
     );
 
@@ -293,6 +373,7 @@ export async function executeRun(
       digestsBuilt: result.digests.length,
       digestsSent: sent,
       failures,
+      personallyMuted: muteResult.suppressed.length,
       undeliverable: result.undeliverable,
       dryRun,
     };

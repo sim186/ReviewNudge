@@ -52,6 +52,7 @@ export interface GqlMergeRequest {
   updatedAt: string;
   approved: boolean;
   approvalsLeft: number | null;
+  userNotesCount: number | null;
   userDiscussionsCount: number | null;
   resolvedDiscussionsCount: number | null;
   project: { fullPath: string; archived: boolean } | null;

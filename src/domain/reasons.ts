@@ -20,6 +20,8 @@ export interface MergeRequestRef {
   updatedAt: string;
   lastPushAt: string | null;
   labels: string[];
+  /** Comment count, paired with lastPushAt to detect movement on a muted merge request. */
+  notesCount: number | null;
 }
 
 export interface Reason {
@@ -104,6 +106,7 @@ function toRef(mr: EnrichedMergeRequest, lastPushAt: string | null): MergeReques
     updatedAt: mr.updatedAt,
     lastPushAt,
     labels: mr.labels?.nodes.map((l) => l.title) ?? [],
+    notesCount: mr.userNotesCount ?? null,
   };
 }
 

@@ -15,6 +15,7 @@ function item(overrides: Partial<DigestItem> = {}): DigestItem {
       updatedAt: '2026-08-05T00:00:00Z',
       lastPushAt: '2026-08-05T00:00:00Z',
       labels: [],
+      notesCount: 0,
     },
     kinds: ['REVIEW_REQUESTED'] as ReasonKind[],
     waitingSince: '2026-08-05T00:00:00Z',
@@ -153,6 +154,51 @@ describe('renderDigest', () => {
     const out = renderDigest(digest({ items: [stale] }), TEMPLATE);
     expect(out.html).toContain('#b3261e');
     expect(JSON.stringify(out.card)).toContain('Attention');
+  });
+
+  it('leaves self-service links out when none are supplied', () => {
+    const out = renderDigest(digest(), TEMPLATE);
+    expect(out.text).not.toContain('Mute this one');
+    expect(out.html).not.toContain('Mute this one');
+    expect(out.html).toContain('ask an administrator');
+    expect(JSON.stringify(out.card)).not.toContain('Mute or pause');
+  });
+
+  it('carries a per-item mute link and a manage link in all three formats', () => {
+    const links = {
+      mute: (mrUrl: string) => `https://mra.example.com/me/tok/mute?mr=${encodeURIComponent(mrUrl)}`,
+      manage: 'https://mra.example.com/me/tok',
+    };
+    const out = renderDigest(digest(), TEMPLATE, links);
+
+    expect(out.text).toContain('Mute this one: https://mra.example.com/me/tok/mute?mr=');
+    expect(out.text).toContain('pause everything: https://mra.example.com/me/tok');
+
+    expect(out.html).toContain('Mute this one');
+    expect(out.html).toContain('https://mra.example.com/me/tok');
+
+    const card = JSON.stringify(out.card);
+    expect(card).toContain('Mute this one');
+    expect(card).toContain('Mute or pause');
+  });
+
+  it('escapes a hostile title in the mute link row', () => {
+    const evil = item({ mr: { ...item().mr, title: '"><script>x</script>' } });
+    const links = { mute: () => 'https://mra.example.com/m', manage: 'https://mra.example.com/me' };
+    const out = renderDigest(digest({ items: [evil] }), TEMPLATE, links);
+    expect(out.html).not.toContain('<script>x</script>');
+  });
+
+  it('still fits the Teams size limit with links attached', () => {
+    const items = Array.from({ length: 200 }, (_, i) =>
+      item({ mr: { ...item().mr, iid: String(i), title: `A fairly long merge request title ${i}` } }),
+    );
+    const links = {
+      mute: (mrUrl: string) => `https://mra.example.com/me/tok/mute?mr=${encodeURIComponent(mrUrl)}`,
+      manage: 'https://mra.example.com/me/tok',
+    };
+    const out = renderDigest(digest({ items, totalItems: 200 }), TEMPLATE, links);
+    expect(Buffer.byteLength(JSON.stringify(out.card), 'utf8')).toBeLessThanOrEqual(24_000);
   });
 
   it('lists every reason kind on a merged row', () => {
