@@ -4,7 +4,7 @@ import type { Audit } from '../db/audit.js';
 import type { Repo } from '../db/repo.js';
 import type { Logger } from '../logger.js';
 import type { Scheduler } from '../scheduler.js';
-import { page, type PageOptions } from './views/layout.js';
+import { page, type PageOptions, type SafeHtml } from './views/layout.js';
 
 export interface AdminContext {
   provider: ConfigProvider;
@@ -46,7 +46,7 @@ export function render(
   request: FastifyRequest,
   reply: FastifyReply,
   options: Omit<PageOptions, 'flash' | 'paused'>,
-  body: string,
+  body: string | SafeHtml,
 ): FastifyReply {
   const paused = ctx.provider.resolve().silence.enabled;
   return reply

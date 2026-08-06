@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { SnapshotItem } from '../../db/repo.js';
 import { normaliseMrUrl } from '../../domain/filters.js';
 import { type AdminContext, formValue, redirectWith, render, sourceIp } from '../context.js';
-import { html, raw, relativeTime } from '../views/layout.js';
+import { html, raw, relativeTime, type SafeHtml } from '../views/layout.js';
 
 const KIND_LABEL: Record<string, string> = {
   REVIEW_REQUESTED: 'Review',
@@ -29,7 +29,7 @@ function renderPerson(
   username: string,
   items: SnapshotItem[],
   now: Date,
-): string {
+): SafeHtml {
   const blocked = items[0]?.deliverable === false;
   const skipReason = items[0]?.skip_reason;
 
@@ -114,10 +114,12 @@ export function registerPending(app: FastifyInstance, ctx: AdminContext): void {
       </div>
     `;
 
-    const body =
-      ordered.length > 0
-        ? header + ordered.map(([username, list]) => renderPerson(username, list, now)).join('')
-        : header + html`<div class="card"><p class="empty">Nothing is waiting on anyone.</p></div>`;
+    const body = html`
+      ${header}
+      ${ordered.length > 0
+        ? ordered.map(([username, list]) => renderPerson(username, list, now))
+        : html`<div class="card"><p class="empty">Nothing is waiting on anyone.</p></div>`}
+    `;
 
     return render(ctx, request, reply, { title: 'Pending', active: '/pending' }, body);
   });

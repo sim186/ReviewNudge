@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { AuditRow } from '../../db/audit.js';
 import { type AdminContext, render } from '../context.js';
-import { html, raw, relativeTime } from '../views/layout.js';
+import { html, raw, relativeTime, type SafeHtml } from '../views/layout.js';
 
 const PAGE_SIZE = 50;
 
@@ -14,7 +14,7 @@ function summarise(value: unknown): string {
   return String(value);
 }
 
-function row(entry: AuditRow, now: Date): string {
+function row(entry: AuditRow, now: Date): SafeHtml {
   const changed = entry.before !== null || entry.after !== null;
 
   return html`<tr>

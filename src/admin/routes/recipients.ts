@@ -4,7 +4,7 @@ import { channelSchema } from '../../config/schema.js';
 import type { RecipientRow } from '../../db/repo.js';
 import { isSnoozed } from '../../domain/silence.js';
 import { type AdminContext, formList, formValue, redirectWith, render, sourceIp } from '../context.js';
-import { html, raw } from '../views/layout.js';
+import { html, raw, type SafeHtml } from '../views/layout.js';
 
 const recipientForm = z.object({
   gitlab_username: z.string().min(1).max(255),
@@ -17,7 +17,7 @@ const recipientForm = z.object({
     .nullable(),
 });
 
-function recipientRow(r: RecipientRow, timezone: string, now: Date): string {
+function recipientRow(r: RecipientRow, timezone: string, now: Date): SafeHtml {
   const snoozed = isSnoozed(r.snooze_until, timezone, now);
 
   return html`<tr>
@@ -120,7 +120,7 @@ export function registerRecipients(app: FastifyInstance, ctx: AdminContext): voi
             </div>
           </div>
         `
-      : '';
+      : null;
 
     const listCard = html`
       <div class="card">
@@ -169,7 +169,7 @@ export function registerRecipients(app: FastifyInstance, ctx: AdminContext): voi
       request,
       reply,
       { title: 'Recipients', active: '/recipients' },
-      unmappedCard + listCard + addCard,
+      html`${unmappedCard}${listCard}${addCard}`,
     );
   });
 

@@ -3,7 +3,7 @@ import type { ExclusionKind } from '../../db/repo.js';
 import { normaliseMrUrl } from '../../domain/filters.js';
 import type { ExclusionEntry } from '../../config/effective.js';
 import { type AdminContext, formValue, redirectWith, render, sourceIp } from '../context.js';
-import { html, raw } from '../views/layout.js';
+import { html, raw, type SafeHtml } from '../views/layout.js';
 
 interface Section {
   kind: ExclusionKind;
@@ -39,7 +39,7 @@ const SECTIONS: Section[] = [
   },
 ];
 
-function renderSection(section: Section, entries: ExclusionEntry[]): string {
+function renderSection(section: Section, entries: ExclusionEntry[]): SafeHtml {
   const rows = entries.length
     ? entries
         .map(
@@ -108,9 +108,10 @@ export function registerExclusions(app: FastifyInstance, ctx: AdminContext): voi
       </div>
     `;
 
-    const body =
-      intro +
-      SECTIONS.map((section) => renderSection(section, ctx.provider.exclusionEntries(section.kind))).join('');
+    const body = html`
+      ${intro}
+      ${SECTIONS.map((section) => renderSection(section, ctx.provider.exclusionEntries(section.kind)))}
+    `;
 
     return render(ctx, request, reply, { title: 'Exclusions', active: '/exclusions' }, body);
   });

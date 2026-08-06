@@ -1,10 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { describeSilence, evaluateRunSilence } from '../../domain/silence.js';
 import { type AdminContext, redirectWith, render, sourceIp } from '../context.js';
-import { html, raw, relativeTime } from '../views/layout.js';
+import { html, raw, relativeTime, type SafeHtml } from '../views/layout.js';
 import type { RunRow } from '../../db/repo.js';
 
-function statusChip(run: RunRow): string {
+function statusChip(run: RunRow): SafeHtml {
   const cls =
     run.status === 'ok' ? 'chip ok' : run.status === 'failed' ? 'chip error' : 'chip';
   return html`<span class="${cls}">${run.status}</span>`;
