@@ -1,0 +1,15 @@
+node_modules/
+dist/
+data/
+*.log
+
+# Local configuration and secrets — never commit these.
+.env
+config/config.yaml
+config/*.local.yaml
+
+# Editor / OS noise
+.DS_Store
+.idea/
+.vscode/
+*.swp

@@ -1,0 +1,40 @@
+services:
+  mergerequestalarm:
+    build: .
+    image: mergerequestalarm:latest
+    restart: unless-stopped
+
+    # Secrets come from .env — see .env.example. config.yaml references them as ${VAR}.
+    env_file: [.env]
+    environment:
+      # Bind inside the container; the port publish below decides who can reach it.
+      MRA_ADMIN_HOST: 0.0.0.0
+      LOG_FORMAT: json
+      # Uncomment to scan and record without delivering anything.
+      # MRA_DRY_RUN: "1"
+
+    ports:
+      # Published to loopback only. Point a reverse proxy at this to expose the panel.
+      - '127.0.0.1:8080:8080'
+
+    volumes:
+      # Read-only: the application never writes its config file.
+      - ./config/config.yaml:/app/config/config.yaml:ro
+      # The SQLite database — overrides, recipients, run history, audit log.
+      - mra-data:/app/data
+
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  mra-data:

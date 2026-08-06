@@ -1,0 +1,303 @@
+#!/usr/bin/env node
+import { createApp } from './app.js';
+import { startAdminServer } from './admin/server.js';
+import { generateSessionSecret } from './admin/auth.js';
+import { ConfigError } from './config/load.js';
+import { GitLabClient } from './gitlab/client.js';
+import { logger } from './logger.js';
+import { buildNotifiers } from './run.js';
+import { renderDigest } from './notify/render.js';
+import { Scheduler } from './scheduler.js';
+import { executeRun } from './run.js';
+import type { Digest } from './domain/digest.js';
+
+interface Args {
+  command: string;
+  flags: Map<string, string | true>;
+}
+
+function parseArgs(argv: string[]): Args {
+  const [command = 'help', ...rest] = argv;
+  const flags = new Map<string, string | true>();
+
+  for (let i = 0; i < rest.length; i++) {
+    const token = rest[i]!;
+    if (!token.startsWith('-')) continue;
+    const name = token.replace(/^-+/, '');
+    const next = rest[i + 1];
+    if (next && !next.startsWith('-')) {
+      flags.set(name, next);
+      i++;
+    } else {
+      flags.set(name, true);
+    }
+  }
+  return { command, flags };
+}
+
+function flagString(args: Args, ...names: string[]): string | undefined {
+  for (const name of names) {
+    const value = args.flags.get(name);
+    if (typeof value === 'string') return value;
+  }
+  return undefined;
+}
+
+function flagBool(args: Args, ...names: string[]): boolean {
+  return names.some((name) => args.flags.has(name));
+}
+
+const USAGE = `MergeRequestAlarm — tells people which merge requests are waiting on them.
+
+Usage:
+  mra serve                     Run the scheduler and the admin panel
+  mra run [--once] [--dry-run]  Run one cycle now (--once is the default)
+  mra check-config [--remote]   Validate the config file; --remote also tests GitLab
+  mra test-notify --recipient U Send one sample digest to a recipient
+  mra help
+
+Options:
+  -c, --config <path>   Config file (default: config/config.yaml, or $MRA_CONFIG)
+      --dry-run         Render digests to stdout instead of delivering them
+      --remote          Contact GitLab as part of check-config
+      --recipient <u>   GitLab username to send the sample to
+
+Environment:
+  MRA_CONFIG, MRA_DATA_DIR, MRA_DRY_RUN, MRA_SILENCE, LOG_LEVEL, LOG_FORMAT
+`;
+
+async function commandCheckConfig(args: Args): Promise<number> {
+  const app = createApp(flagString(args, 'c', 'config'));
+  const config = app.provider.resolve();
+
+  logger.info(
+    {
+      groups: config.gitlab.groups,
+      channels: config.notifications.channels,
+      recipients: config.recipients.length,
+      schedule: `${config.schedule.cron} (${config.schedule.timezone})`,
+    },
+    'configuration is valid',
+  );
+
+  if (config.notifications.channels.length === 0) {
+    logger.warn('no notification channels are enabled; nothing would ever be delivered');
+  }
+  if (config.recipients.length === 0) {
+    logger.warn('no recipients are configured; every digest would be undeliverable');
+  }
+
+  let exitCode = 0;
+  if (flagBool(args, 'remote')) {
+    try {
+      const client = new GitLabClient({
+        url: config.gitlab.url,
+        token: config.gitlab.token,
+        timeoutMs: config.gitlab.timeout_ms,
+        logger,
+      });
+      const info = await client.checkConnection();
+      logger.info({ user: info.username, version: info.version }, 'connected to GitLab');
+
+      for (const group of config.gitlab.groups) {
+        const mrs = await client.fetchGroupMergeRequests(group, config.gitlab.include_subgroups);
+        logger.info({ group, openMergeRequests: mrs.length }, 'group readable');
+      }
+    } catch (err) {
+      logger.error({ err: (err as Error).message }, 'GitLab check failed');
+      exitCode = 1;
+    }
+  }
+
+  app.close();
+  return exitCode;
+}
+
+async function commandRun(args: Args): Promise<number> {
+  const app = createApp(flagString(args, 'c', 'config'));
+  const dryRun = flagBool(args, 'dry-run') || process.env.MRA_DRY_RUN === '1';
+
+  try {
+    const summary = await executeRun(app.provider, app.repo, app.audit, {
+      trigger: 'cli',
+      dryRun,
+      logger,
+    });
+
+    for (const group of summary.undeliverable) {
+      logger.warn(
+        { user: group.username, items: group.itemCount, reason: group.reason },
+        'digest not delivered',
+      );
+    }
+
+    // Everything failing is an operational problem worth a non-zero exit for cron.
+    return summary.digestsBuilt > 0 && summary.digestsSent === 0 && summary.failures > 0 ? 1 : 0;
+  } catch {
+    return 1;
+  } finally {
+    app.close();
+  }
+}
+
+async function commandTestNotify(args: Args): Promise<number> {
+  const username = flagString(args, 'recipient', 'r');
+  if (!username) {
+    logger.error('give a recipient, for example: mra test-notify --recipient alice');
+    return 1;
+  }
+
+  const app = createApp(flagString(args, 'c', 'config'));
+  const config = app.provider.resolve();
+  const recipient = config.recipients.find((r) => r.gitlab_username === username);
+
+  if (!recipient) {
+    logger.error({ username }, 'no such recipient; add them in the admin panel or config.yaml');
+    app.close();
+    return 1;
+  }
+
+  const now = new Date();
+  const sample: Digest = {
+    username,
+    recipient,
+    channels: config.notifications.channels,
+    items: [
+      {
+        mr: {
+          url: `${config.gitlab.url}/example/project/-/merge_requests/1`,
+          title: 'Sample merge request from MergeRequestAlarm',
+          projectPath: 'example/project',
+          iid: '1',
+          author: 'someone-else',
+          createdAt: new Date(now.getTime() - 4 * 86_400_000).toISOString(),
+          updatedAt: now.toISOString(),
+          lastPushAt: now.toISOString(),
+          labels: [],
+        },
+        kinds: ['REVIEW_REQUESTED'],
+        waitingSince: new Date(now.getTime() - 4 * 86_400_000).toISOString(),
+        waitingDays: 4,
+        detail: 'This is a test message. If you can read it, delivery works.',
+      },
+    ],
+    totalItems: 1,
+    truncated: 0,
+  };
+
+  const rendered = renderDigest(sample, config.email?.subject_template ?? '{count} waiting');
+  const notifiers = buildNotifiers(config, false);
+  let failures = 0;
+
+  for (const channel of config.notifications.channels) {
+    const notifier = notifiers.get(channel);
+    if (!notifier) {
+      logger.warn({ channel }, 'channel is enabled but not configured; skipping');
+      continue;
+    }
+    try {
+      if (notifier.verify) await notifier.verify();
+      await notifier.send(sample, rendered);
+      logger.info({ channel, username }, 'sample delivered');
+      app.audit.record({ actor: 'cli', action: 'notification.test', target: `${username}/${channel}` });
+    } catch (err) {
+      failures++;
+      const message = (err as Error).message;
+      logger.error({ channel, err: message }, 'sample delivery failed');
+      app.audit.record({
+        actor: 'cli',
+        action: 'notification.test',
+        target: `${username}/${channel}`,
+        outcome: 'error',
+        detail: message,
+      });
+    }
+  }
+
+  app.close();
+  return failures > 0 ? 1 : 0;
+}
+
+async function commandServe(args: Args): Promise<number> {
+  const app = createApp(flagString(args, 'c', 'config'));
+  const config = app.provider.resolve();
+  const dryRun = flagBool(args, 'dry-run') || process.env.MRA_DRY_RUN === '1';
+
+  const scheduler = new Scheduler(app.provider, app.repo, app.audit, { dryRun, logger });
+  scheduler.start();
+
+  let server: Awaited<ReturnType<typeof startAdminServer>> | null = null;
+  if (config.admin.enabled) {
+    // The environment is honoured even when config.yaml does not reference it, so
+    // setting MRA_SESSION_SECRET alone does what an operator expects.
+    const sessionSecret = config.admin.session_secret || process.env.MRA_SESSION_SECRET || '';
+    if (!sessionSecret) {
+      logger.warn('no admin session secret set; sessions will not survive a restart');
+    }
+
+    server = await startAdminServer(
+      { provider: app.provider, repo: app.repo, audit: app.audit, scheduler, logger },
+      {
+        host: config.admin.host,
+        port: config.admin.port,
+        password: config.admin.password,
+        sessionSecret: sessionSecret || generateSessionSecret(),
+        sessionTtlHours: config.admin.session_ttl_hours,
+      },
+    );
+  } else {
+    logger.info('admin panel is disabled');
+  }
+
+  const shutdown = async (signal: string) => {
+    logger.info({ signal }, 'shutting down');
+    scheduler.stop();
+    if (server) await server.close();
+    app.close();
+    process.exit(0);
+  };
+  process.on('SIGINT', () => void shutdown('SIGINT'));
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+
+  // Resolves only on shutdown.
+  return new Promise<number>(() => {});
+}
+
+async function main(): Promise<void> {
+  const args = parseArgs(process.argv.slice(2));
+
+  try {
+    switch (args.command) {
+      case 'serve':
+        process.exitCode = await commandServe(args);
+        break;
+      case 'run':
+        process.exitCode = await commandRun(args);
+        break;
+      case 'check-config':
+        process.exitCode = await commandCheckConfig(args);
+        break;
+      case 'test-notify':
+        process.exitCode = await commandTestNotify(args);
+        break;
+      case 'help':
+      case '--help':
+      case '-h':
+        process.stdout.write(USAGE);
+        break;
+      default:
+        process.stderr.write(`Unknown command "${args.command}".\n\n${USAGE}`);
+        process.exitCode = 1;
+    }
+  } catch (err) {
+    if (err instanceof ConfigError) {
+      // Config problems are the operator's to fix; a stack trace only gets in the way.
+      process.stderr.write(`${err.message}\n`);
+    } else {
+      logger.error({ err: (err as Error).message }, 'command failed');
+    }
+    process.exitCode = 1;
+  }
+}
+
+void main();

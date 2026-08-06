@@ -1,1 +1,316 @@
 # MergeRequestAlarm
+
+Tells people which merge requests on your self-hosted GitLab are waiting for **them** — as
+reviewer, assignee, or thread participant — as one digest per person, by email or Microsoft
+Teams.
+
+GitLab's own to-do list is easy to ignore and its notification emails arrive per event, so
+they get filtered away. This sends one message a day that says exactly what is blocked on
+you and for how long.
+
+- **Runs anywhere** — from a laptop, as a Docker container, or as a one-shot job under
+  cron, a systemd timer, or a Kubernetes CronJob.
+- **Works on GitLab Free.** It uses the GraphQL API, because the REST approvals endpoint is
+  Premium/Ultimate only.
+- **Has an admin panel** for the day-to-day knobs: pause, snooze, exclusions, and an
+  append-only audit log — no SSH-and-edit-YAML.
+
+---
+
+## Contents
+
+- [How it decides who is blocking](#how-it-decides-who-is-blocking)
+- [Quick start](#quick-start)
+- [Docker](#docker)
+- [Configuration](#configuration)
+- [Silencing](#silencing)
+- [The admin panel](#the-admin-panel)
+- [Setting up the Teams workflow](#setting-up-the-teams-workflow)
+- [Commands](#commands)
+- [Running as a scheduled job instead](#running-as-a-scheduled-job-instead)
+- [Troubleshooting](#troubleshooting)
+- [Development](#development)
+
+---
+
+## How it decides who is blocking
+
+For every open, non-draft merge request in the configured groups, three rules run. Each can
+be switched off independently.
+
+| Rule | Someone is notified when |
+| --- | --- |
+| **Reviewer has not approved** | They are a reviewer, are not in `approvedBy`, and their review state is `UNREVIEWED`, `REVIEW_STARTED`, or `UNAPPROVED`. |
+| **Assignee has something to do** | They are an assignee and either a reviewer requested changes, or the merge request is fully approved and nobody merged it, or there are unresolved threads they did not open. |
+| **Unresolved threads** | They opened a thread that is still unresolved and somebody else had the last word, or they were @-mentioned and have not replied since. |
+
+Two deliberate refinements:
+
+- A reviewer who has already **commented or requested changes** is *not* chased. The ball
+  is with the author until new commits land — and then the reviewer is chased again, with
+  the wait measured from that push.
+- **`require_activity_since_push`** (on by default) drops anyone who has already acted since
+  the most recent push, so people are not nagged about work they have just done.
+
+Merge requests younger than `min_age_hours` are ignored, so nothing fires minutes after an
+MR is opened. Several reasons against the same merge request collapse into one row, and
+each row shows how long it has been waiting.
+
+## Quick start
+
+Requires Node.js 22 or newer.
+
+```bash
+git clone <this repo> && cd MergeRequestAlarm
+npm ci
+
+cp .env.example .env                               # fill in GITLAB_TOKEN and MRA_ADMIN_PASSWORD
+cp config/config.example.yaml config/config.yaml   # set your URL and groups
+
+npm run build
+node dist/cli.js check-config --remote     # validates config and talks to GitLab
+node dist/cli.js run --once --dry-run      # prints what it would send, sends nothing
+```
+
+Once the dry run looks right:
+
+```bash
+npm start        # scheduler + admin panel on http://127.0.0.1:8080
+```
+
+**The GitLab token** needs the `read_api` scope only, and must belong to a user who can see
+every group listed under `gitlab.groups`. No admin token is required — which is why
+recipient addresses come from configuration rather than the users API.
+
+## Docker
+
+```bash
+cp .env.example .env                       # required; compose reads it
+cp config/config.example.yaml config/config.yaml
+docker compose up --build
+```
+
+The panel is published to `127.0.0.1:8080` only; put a reverse proxy in front of it to
+expose it further. `config.yaml` is mounted read-only — the application never writes it —
+and the SQLite database lives in the `mra-data` volume, which must persist.
+
+Set `MRA_DRY_RUN=1` in `.env` for the first run to scan and record without delivering.
+
+> The image has not been built in this environment (no Docker daemon available), so the
+> `Dockerfile` and `compose.yaml` are unverified beyond `docker compose config`. Everything
+> else in this README has been exercised end to end.
+
+## Configuration
+
+Configuration lives in two places, and the split matters:
+
+| | `config/config.yaml` | SQLite (`data/mra.db`) |
+| --- | --- | --- |
+| Holds | infrastructure and secrets: GitLab URL and token, SMTP, Teams URL, admin password | operator changes: exclusions, recipients, snoozes, the pause switch, quiet hours, rule toggles |
+| Written by | you | the admin panel |
+| Also holds | defaults for everything in the right-hand column | run history, the last scan, the audit log |
+
+Database values win over file values, per key. The file is **never** written by the
+application, so secrets never reach the database or the panel — the Settings page shows
+them redacted. Anything you changed in the panel can be reverted with **Reset all
+overrides**.
+
+`${VAR}` in the YAML reads an environment variable; `${VAR:-fallback}` supplies a default.
+Interpolation happens *after* the YAML is parsed, so a secret containing `:` or `#` cannot
+corrupt the document.
+
+See [`config/config.example.yaml`](config/config.example.yaml) for the fully commented
+reference. The essentials:
+
+```yaml
+gitlab:
+  url: https://gitlab.example.com
+  token: ${GITLAB_TOKEN}                 # read_api scope
+  groups: [engineering, platform/infra]  # scanned recursively, subgroups included
+
+schedule:
+  cron: '0 9 * * 1-5'                    # 09:00, Monday to Friday
+  timezone: Europe/Zurich
+
+notifications:
+  channels: [email, teams]
+
+recipients:
+  - gitlab_username: alice
+    email: alice@example.com
+    teams_upn: alice@example.com
+```
+
+Recipients in the file are copied into the database on first start only, so the file
+populates a fresh deployment but never clobbers later panel edits. People who show up on
+merge requests but have no mapping are skipped, logged, and listed at the top of the
+panel's Recipients page.
+
+### Exclusions
+
+`exclude.projects` and `exclude.users` accept globs: `*` matches one path segment, `**`
+matches any depth. A trailing `/**` also matches the prefix itself, so `sandbox/**` covers
+the `sandbox` group *and* everything beneath it. `exclude.bots: true` skips GitLab bot
+accounts and conventionally named ones such as `renovate-bot`.
+
+## Silencing
+
+Four independent mechanisms, applied in this order:
+
+| # | Mechanism | Effect | Still scans? |
+| --- | --- | --- | --- |
+| 1 | **Global pause** (`silence.enabled`, the panel toggle, or `MRA_SILENCE=1`) | Nothing is delivered to anyone | **Yes** — so Pending stays accurate and the audit log records what was withheld |
+| 2 | **Holiday**, then **non-working day**, then **quiet hours** | The whole run is skipped | No |
+| 3 | **Per-recipient snooze** (`snooze_until`) | That person's digest is dropped | Yes |
+| 4 | **Muted merge requests** and **excluded labels** | Those merge requests never enter any digest | Yes |
+
+Quiet hours may wrap midnight (`18:00` → `08:00`) and are evaluated in
+`schedule.timezone`, so they follow wall-clock time across daylight-saving changes. Setting
+start equal to end is treated as *no* restriction rather than an all-day blackout, so a
+half-finished edit cannot silently stop every notification.
+
+A snooze runs to the *start* of its date: snoozed until `2026-09-01` means quiet through 31
+August, and a digest again on 1 September.
+
+`MRA_SILENCE=1` can force silence **on** but never off, so it cannot quietly defeat the
+panel toggle.
+
+## The admin panel
+
+`npm start` serves it on `http://127.0.0.1:8080`. One shared password
+(`MRA_ADMIN_PASSWORD`, minimum 8 characters) gates a login form that sets a signed,
+httpOnly session cookie. Set `MRA_SESSION_SECRET` to a random 32-byte hex string so
+sessions survive a restart:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+It binds to loopback by default, so exposing it is a deliberate act — put a reverse proxy
+in front, or set `MRA_ADMIN_HOST`.
+
+| Page | What it is for |
+| --- | --- |
+| **Dashboard** | Last run, next run, current silence state; pause toggle; **Run now** and **Run now (dry run)** |
+| **Pending** | Who is waiting on what, from the last scan, with reason chips and age. One-click **Mute** per merge request |
+| **Recipients** | Map GitLab usernames to addresses. Unmapped people who are blocking work are listed first, with a prefilled form |
+| **Exclusions** | Add or remove project globs, users, labels, and muted merge requests. Entries from `config.yaml` are shown but can only be changed there |
+| **Silence** | Quiet hours, working days, holidays, and the precedence order |
+| **Audit** | Every configuration change and delivery attempt, append-only, filterable by actor, action, and date |
+| **Settings** | Schedule, rule toggles, thresholds; `config.yaml` values shown read-only and redacted |
+
+Every mutating action follows the same path — validate, write, record an audit row,
+redirect — so no configuration change escapes the audit log, and each row carries the
+before and after values.
+
+## Setting up the Teams workflow
+
+Office 365 connectors (the old `outlook.office.com/webhook` incoming webhooks) were retired
+on **30 April 2026** and no longer work. Use Power Automate:
+
+1. In Teams, open the channel menu → **Workflows** → **Create a new flow**.
+2. Pick a template starting from **"When a Teams webhook request is received"**, or build a
+   flow with that trigger.
+3. Add a **Post card in a chat or channel** action, and set its message to the incoming
+   payload's Adaptive Card.
+4. Save, copy the generated `https://…logic.azure.com/workflows/…` URL, and put it in
+   `TEAMS_WORKFLOW_URL`.
+
+One URL serves everyone. Each POST is an Adaptive Card 1.4 in the Workflows envelope, plus
+routing hints your flow can branch on:
+
+```json
+{
+  "type": "message",
+  "targetUpn": "alice@example.com",
+  "gitlabUsername": "alice",
+  "itemCount": 3,
+  "attachments": [{ "contentType": "application/vnd.microsoft.card.adaptive", "content": {} }]
+}
+```
+
+Use `targetUpn` to direct-message the right person, or to @-mention them in a channel post.
+Cards are capped at six link buttons and shed rows if they would exceed the Teams size
+limit — the heading always reports the true total.
+
+Check it works with `node dist/cli.js test-notify --recipient alice`.
+
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `mra serve` | Scheduler plus admin panel. The default for `npm start` and the container |
+| `mra run --once` | One cycle now. `--dry-run` prints instead of delivering |
+| `mra check-config` | Validates the config file offline. `--remote` also contacts GitLab and reads each group |
+| `mra test-notify --recipient <user>` | Sends one sample digest over every configured channel |
+
+Common flags: `-c, --config <path>`, `--dry-run`.
+
+Environment: `MRA_CONFIG`, `MRA_DATA_DIR`, `MRA_DRY_RUN`, `MRA_SILENCE`, `MRA_ADMIN_HOST`,
+`MRA_ADMIN_PASSWORD`, `MRA_SESSION_SECRET`, `LOG_LEVEL`, `LOG_FORMAT`.
+
+## Running as a scheduled job instead
+
+`run --once` is a clean one-shot, so you can skip the built-in scheduler entirely. Set
+`admin.enabled: false` and drive it externally:
+
+```cron
+0 9 * * 1-5  cd /opt/mergerequestalarm && node dist/cli.js run --once >> /var/log/mra.log 2>&1
+```
+
+Or as a Kubernetes CronJob using the same image with `args: ["run", "--once"]`. The exit
+code is non-zero when every delivery failed, so your scheduler can alert on it. The SQLite
+database still needs to persist between runs.
+
+## Troubleshooting
+
+**"GitLab rejected the token (HTTP 401)"** — the token is wrong or expired. It needs the
+`read_api` scope.
+
+**"group X was not found, or the token cannot see it"** — check the path is the full group
+path (`platform/infra`, not `infra`) and that the token's user is a member.
+
+**Someone is not getting notified.** Check, in order: are they on the Pending page at all?
+If they appear with a red badge, the reason is on the badge (no mapping, snoozed, disabled,
+no channel). If they are absent entirely, the merge request is probably excluded — a draft,
+too new, an excluded project or label, muted — or they have already acted since the last
+push.
+
+**Everyone stopped getting notified.** Check the Dashboard for the pause banner, then the
+Silence page. Remember quiet hours are evaluated in `schedule.timezone`, not UTC.
+
+**"Query has complexity of N, which exceeds max complexity"** — lower `gitlab.page_size`.
+
+**Reviewer states look wrong on an older GitLab.** `reviewState` arrived in GitLab 17.0. On
+older instances the client detects this, logs a warning, and falls back to `approvedBy`
+membership. `commits(last: 1)` degrades the same way, using `updatedAt` as the push time.
+
+**Teams returns HTTP 400.** The flow is not using the "When a Teams webhook request is
+received" trigger, or the card action is not reading the posted payload. Retry with
+`test-notify` after fixing the flow.
+
+## Development
+
+```bash
+npm test          # 213 tests
+npm run typecheck
+npm run lint
+npm run dev       # tsx watch, serve mode
+```
+
+Tests use Vitest. The rule engine (`src/domain/reasons.ts`) is the product, so it carries
+the heaviest coverage; `src/admin/server.test.ts` drives the panel through Fastify's
+`inject`, and `src/run.test.ts` covers orchestration with a stubbed GitLab.
+
+```
+src/
+  config/    schema, YAML loading, file-plus-database merge
+  db/        SQLite schema, repository, audit log
+  gitlab/    GraphQL client and queries
+  domain/    filters, the rule engine, digest building, silencing
+  notify/    rendering, email, Teams, console
+  admin/     Fastify server, auth, pages
+  run.ts     one full cycle
+  scheduler.ts  cron loop
+  cli.ts     commands
+```

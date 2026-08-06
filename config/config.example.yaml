@@ -1,0 +1,109 @@
+# MergeRequestAlarm configuration.
+#
+# Copy this file to config/config.yaml and edit it. This file holds infrastructure
+# and secrets only — it is never written by the application. Day-to-day settings
+# (exclusions, snoozes, the pause switch) are edited in the admin panel and stored
+# in SQLite; the values here act as the defaults those overrides sit on top of.
+#
+# ${VAR} reads an environment variable; ${VAR:-fallback} supplies a default.
+# Keep secrets in .env, not here.
+
+gitlab:
+  url: https://gitlab.example.com
+  token: ${GITLAB_TOKEN} # personal access token, read_api scope is enough
+  groups: # full paths; subgroups are included
+    - engineering
+    - platform/infra
+  include_subgroups: true
+  timeout_ms: 30000
+  page_size: 50
+  max_retries: 4
+
+admin:
+  enabled: true
+  # Loopback by default so exposing the panel is a deliberate act. In Docker set
+  # MRA_ADMIN_HOST=0.0.0.0 and publish the port to 127.0.0.1 on the host instead.
+  host: ${MRA_ADMIN_HOST:-127.0.0.1}
+  port: 8080
+  password: ${MRA_ADMIN_PASSWORD}
+  session_secret: ${MRA_SESSION_SECRET:-} # random per start if left empty
+  session_ttl_hours: 12
+
+schedule:
+  cron: '0 9 * * 1-5' # 09:00, Monday to Friday
+  timezone: Europe/Zurich
+  run_on_start: false
+
+# Defaults for the "waiting for their input" rules. Overridable in the panel.
+rules:
+  reviewer_not_approved: true # user is a reviewer and has not approved
+  assignee_action_pending: true # user is an assignee and something needs them
+  unresolved_threads: true # unresolved threads they opened or were mentioned in
+  require_activity_since_push: true # skip people who already acted since the last push
+  min_age_hours: 12 # ignore merge requests younger than this
+  ignore_draft: true
+
+# Defaults for exclusions. The panel adds to these; it never edits this file.
+exclude:
+  projects: # glob patterns matched against the full project path
+    - 'sandbox/**'
+    - 'archive/legacy-tool'
+  mr_labels: # merge requests carrying any of these are skipped
+    - wip
+    - blocked
+    - on-hold
+  users: # never notified, and never counted as blocking
+    - renovate-bot
+    - gitlab-ci
+  bots: true # skip GitLab bot and project-bot accounts
+
+# Defaults for silencing. See the README for the precedence order.
+silence:
+  enabled: false # global pause; also togglable in the panel and via MRA_SILENCE=1
+  quiet_hours: # no delivery outside working hours; null disables the check
+    start: '18:00'
+    end: '08:00'
+  working_days: [mon, tue, wed, thu, fri]
+  holidays:
+    - '2026-12-25'
+    - '2026-12-26'
+  muted_merge_requests: [] # full merge request URLs
+
+notifications:
+  channels: [email, teams] # remove one to switch that channel off entirely
+  max_items_per_digest: 25
+  skip_empty: true # send nothing to people with an empty digest
+
+email:
+  smtp:
+    host: smtp.example.com
+    port: 587
+    secure: false # true for implicit TLS on port 465
+    user: mr-alarm
+    pass: ${SMTP_PASS}
+    reject_unauthorized: true # set false only for a self-signed internal relay
+  from: MergeRequestAlarm <mr-alarm@example.com>
+  subject_template: '{count} merge requests are waiting for you'
+
+teams:
+  # Power Automate flow using the "When a Teams webhook request is received"
+  # trigger. See README for the flow setup — Office 365 connectors were retired
+  # in April 2026 and no longer work.
+  workflow_url: ${TEAMS_WORKFLOW_URL}
+  timeout_ms: 15000
+
+# Seed list mapping GitLab usernames to delivery addresses. After the first start
+# these are managed in the admin panel; entries here act as defaults. People who
+# appear on merge requests but are missing from this list are skipped and shown at
+# the top of the panel's Recipients page.
+recipients:
+  - gitlab_username: alice
+    email: alice@example.com
+    teams_upn: alice@example.com
+    channels: [email, teams] # omit to use notifications.channels
+  - gitlab_username: bob
+    email: bob@example.com
+
+retention:
+  audit_days: 180
+  run_days: 90
