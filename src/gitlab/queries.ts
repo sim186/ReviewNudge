@@ -111,7 +111,7 @@ query MergeRequestDiscussions($fullPath: ID!, $iid: String!, $first: Int!, $afte
   }
 }`;
 
-/** Cheap connectivity and token check used by `mra check-config --remote`. */
+/** Cheap connectivity and token check used by `nudge check-config --remote`. */
 export const CURRENT_USER_QUERY = `
 query CurrentUser {
   currentUser { username name }

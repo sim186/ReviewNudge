@@ -54,8 +54,8 @@ describe('recipient tokens', () => {
 
 describe('selfServiceBaseUrl', () => {
   it('builds a base URL from the admin binding', () => {
-    expect(selfServiceBaseUrl({ enabled: true, host: 'mra.example.com', port: 8080 })).toBe(
-      'http://mra.example.com:8080',
+    expect(selfServiceBaseUrl({ enabled: true, host: 'nudge.example.com', port: 8080 })).toBe(
+      'http://nudge.example.com:8080',
     );
   });
 
@@ -67,18 +67,18 @@ describe('selfServiceBaseUrl', () => {
   });
 
   it('returns null when the panel is switched off', () => {
-    expect(selfServiceBaseUrl({ enabled: false, host: 'mra.example.com', port: 8080 })).toBeNull();
+    expect(selfServiceBaseUrl({ enabled: false, host: 'nudge.example.com', port: 8080 })).toBeNull();
   });
 
   it('recognises reachable hosts', () => {
-    expect(isReachableHost('mra.example.com')).toBe(true);
+    expect(isReachableHost('nudge.example.com')).toBe(true);
     expect(isReachableHost('10.0.0.5')).toBe(true);
     expect(isReachableHost(' LOCALHOST ')).toBe(false);
   });
 });
 
 describe('links', () => {
-  const base = 'http://mra.example.com:8080';
+  const base = 'http://nudge.example.com:8080';
   const token = mintRecipientToken('alice', SECRET);
 
   it('encodes the merge request URL as a query parameter', () => {

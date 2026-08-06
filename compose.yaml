@@ -1,17 +1,17 @@
 services:
-  mergerequestalarm:
+  review-nudge:
     build: .
-    image: mergerequestalarm:latest
+    image: review-nudge:latest
     restart: unless-stopped
 
     # Secrets come from .env — see .env.example. config.yaml references them as ${VAR}.
     env_file: [.env]
     environment:
       # Bind inside the container; the port publish below decides who can reach it.
-      MRA_ADMIN_HOST: 0.0.0.0
+      NUDGE_ADMIN_HOST: 0.0.0.0
       LOG_FORMAT: json
       # Uncomment to scan and record without delivering anything.
-      # MRA_DRY_RUN: "1"
+      # NUDGE_DRY_RUN: "1"
 
     ports:
       # Published to loopback only. Point a reverse proxy at this to expose the panel.
@@ -21,7 +21,7 @@ services:
       # Read-only: the application never writes its config file.
       - ./config/config.yaml:/app/config/config.yaml:ro
       # The SQLite database — overrides, recipients, run history, audit log.
-      - mra-data:/app/data
+      - nudge-data:/app/data
 
     healthcheck:
       test:
@@ -37,4 +37,6 @@ services:
       start_period: 10s
 
 volumes:
-  mra-data:
+  # Renamed from mra-data. Compose would see that as a new, empty volume, so copy the old
+  # one across before the first start — see "Upgrading from MergeRequestAlarm" in the README.
+  nudge-data:

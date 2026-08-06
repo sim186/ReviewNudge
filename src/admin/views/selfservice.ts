@@ -11,12 +11,12 @@ export function recipientPage(title: string, body: SafeHtml | string): string {
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="robots" content="noindex, nofollow" />
-        <title>${title} · MergeRequestAlarm</title>
+        <title>${title} · ReviewNudge</title>
         <link rel="stylesheet" href="/static/style.css" />
       </head>
       <body>
         <header class="topbar">
-          <div class="brand">MergeRequestAlarm</div>
+          <div class="brand">ReviewNudge</div>
         </header>
         <main class="narrow">${raw(body)}</main>
       </body>
@@ -43,7 +43,7 @@ export function disabledPage(): string {
     html`<div class="card">
       <h2>Self-service is switched off</h2>
       <p class="hint">
-        Ask whoever runs MergeRequestAlarm to set a stable admin session secret; without one,
+        Ask whoever runs ReviewNudge to set a stable admin session secret; without one,
         these links cannot be signed. In the meantime they can mute merge requests for you in
         the admin panel.
       </p>

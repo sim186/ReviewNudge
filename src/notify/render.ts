@@ -132,7 +132,7 @@ function renderText(digest: Digest, links?: SelfServiceLinks | null): string {
     lines.push(`Mute one of these, or pause everything: ${links.manage}`);
     lines.push('');
   }
-  lines.push('— MergeRequestAlarm');
+  lines.push('— ReviewNudge');
   return lines.join('\n');
 }
 
@@ -203,7 +203,7 @@ function renderHtml(digest: Digest, links?: SelfServiceLinks | null): string {
       }
       <tr>
         <td colspan="2" style="padding:12px;color:#8b95a1;font-size:11px;border-top:1px solid #e6e9ee;">
-          Sent by MergeRequestAlarm.
+          Sent by ReviewNudge.
           ${
             links
               ? `<a href="${escapeHtml(links.manage)}" style="color:#6b7684;">Mute one of these, or pause everything.</a>`

@@ -13,6 +13,6 @@ export interface Notifier {
   readonly channel: Channel;
   /** Delivers one digest. Throws on failure; the caller records the outcome. */
   send(digest: Digest, rendered: RenderedDigest): Promise<void>;
-  /** Optional connectivity check used by `mra test-notify`. */
+  /** Optional connectivity check used by `nudge test-notify`. */
   verify?(): Promise<void>;
 }

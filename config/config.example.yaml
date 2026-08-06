@@ -1,4 +1,4 @@
-# MergeRequestAlarm configuration.
+# ReviewNudge configuration.
 #
 # Copy this file to config/config.yaml and edit it. This file holds infrastructure
 # and secrets only — it is never written by the application. Day-to-day settings
@@ -25,11 +25,11 @@ gitlab:
 admin:
   enabled: true
   # Loopback by default so exposing the panel is a deliberate act. In Docker set
-  # MRA_ADMIN_HOST=0.0.0.0 and publish the port to 127.0.0.1 on the host instead.
-  host: ${MRA_ADMIN_HOST:-127.0.0.1}
+  # NUDGE_ADMIN_HOST=0.0.0.0 and publish the port to 127.0.0.1 on the host instead.
+  host: ${NUDGE_ADMIN_HOST:-127.0.0.1}
   port: 8080
-  password: ${MRA_ADMIN_PASSWORD}
-  session_secret: ${MRA_SESSION_SECRET:-} # random per start if left empty
+  password: ${NUDGE_ADMIN_PASSWORD}
+  session_secret: ${NUDGE_SESSION_SECRET:-} # random per start if left empty
   session_ttl_hours: 12
 
 schedule:
@@ -62,7 +62,7 @@ exclude:
 
 # Defaults for silencing. See the README for the precedence order.
 silence:
-  enabled: false # global pause; also togglable in the panel and via MRA_SILENCE=1
+  enabled: false # global pause; also togglable in the panel and via NUDGE_SILENCE=1
   quiet_hours: # no delivery outside working hours; null disables the check
     start: '18:00'
     end: '08:00'
@@ -82,10 +82,10 @@ email:
     host: smtp.example.com
     port: 587
     secure: false # true for implicit TLS on port 465
-    user: mr-alarm
+    user: review-nudge
     pass: ${SMTP_PASS}
     reject_unauthorized: true # set false only for a self-signed internal relay
-  from: MergeRequestAlarm <mr-alarm@example.com>
+  from: ReviewNudge <review-nudge@example.com>
   subject_template: '{count} merge requests are waiting for you'
 
 teams:

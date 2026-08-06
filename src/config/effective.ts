@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { readEnvFlag } from '../env.js';
 import type { Repo, ExclusionKind, RecipientRow } from '../db/repo.js';
 import {
   channelSchema,
@@ -181,9 +182,9 @@ export class ConfigProvider {
   resolve(): EffectiveConfig {
     const f = this.file;
 
-    // MRA_SILENCE is an escape hatch for operators without panel access — it can
+    // NUDGE_SILENCE is an escape hatch for operators without panel access — it can
     // force silence on, but never off, so it cannot quietly defeat the toggle.
-    const envSilence = this.env.MRA_SILENCE === '1' || this.env.MRA_SILENCE === 'true';
+    const envSilence = readEnvFlag('SILENCE', this.env);
 
     return {
       gitlab: f.gitlab,

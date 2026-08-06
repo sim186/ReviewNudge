@@ -2,6 +2,7 @@ import { Cron } from 'croner';
 import type { FastifyInstance } from 'fastify';
 import { DateTime } from 'luxon';
 import { SETTING_SCHEMAS, isSettingKey, type SettingKey } from '../../config/effective.js';
+import { databasePath } from '../../db/migrate.js';
 import { type AdminContext, formValue, redirectWith, render, sourceIp } from '../context.js';
 import { html, raw } from '../views/layout.js';
 
@@ -115,7 +116,7 @@ export function registerSettings(app: FastifyInstance, ctx: AdminContext): void 
               <tr><td>SMTP password</td><td><code>${redact(file.email?.smtp.pass)}</code></td></tr>
               <tr><td>Mail from</td><td><code>${file.email?.from ?? 'not configured'}</code></td></tr>
               <tr><td>Teams workflow URL</td><td><code>${redact(file.teams?.workflow_url)}</code></td></tr>
-              <tr><td>Database</td><td><code>data/mra.db</code></td></tr>
+              <tr><td>Database</td><td><code>${databasePath()}</code></td></tr>
             </tbody>
           </table>
         </div>

@@ -222,16 +222,16 @@ describe('renderDigest', () => {
 
   it('carries a per-item mute link and a manage link in all three formats', () => {
     const links = {
-      mute: (mrUrl: string) => `https://mra.example.com/me/tok/mute?mr=${encodeURIComponent(mrUrl)}`,
-      manage: 'https://mra.example.com/me/tok',
+      mute: (mrUrl: string) => `https://nudge.example.com/me/tok/mute?mr=${encodeURIComponent(mrUrl)}`,
+      manage: 'https://nudge.example.com/me/tok',
     };
     const out = renderDigest(digest(), TEMPLATE, links);
 
-    expect(out.text).toContain('Mute this one: https://mra.example.com/me/tok/mute?mr=');
-    expect(out.text).toContain('pause everything: https://mra.example.com/me/tok');
+    expect(out.text).toContain('Mute this one: https://nudge.example.com/me/tok/mute?mr=');
+    expect(out.text).toContain('pause everything: https://nudge.example.com/me/tok');
 
     expect(out.html).toContain('Mute this one');
-    expect(out.html).toContain('https://mra.example.com/me/tok');
+    expect(out.html).toContain('https://nudge.example.com/me/tok');
 
     const card = JSON.stringify(out.card);
     expect(card).toContain('Mute this one');
@@ -240,7 +240,7 @@ describe('renderDigest', () => {
 
   it('escapes a hostile title in the mute link row', () => {
     const evil = item({ mr: { ...item().mr, title: '"><script>x</script>' } });
-    const links = { mute: () => 'https://mra.example.com/m', manage: 'https://mra.example.com/me' };
+    const links = { mute: () => 'https://nudge.example.com/m', manage: 'https://nudge.example.com/me' };
     const out = renderDigest(digest({ items: [evil] }), TEMPLATE, links);
     expect(out.html).not.toContain('<script>x</script>');
   });
@@ -250,8 +250,8 @@ describe('renderDigest', () => {
       item({ mr: { ...item().mr, iid: String(i), title: `A fairly long merge request title ${i}` } }),
     );
     const links = {
-      mute: (mrUrl: string) => `https://mra.example.com/me/tok/mute?mr=${encodeURIComponent(mrUrl)}`,
-      manage: 'https://mra.example.com/me/tok',
+      mute: (mrUrl: string) => `https://nudge.example.com/me/tok/mute?mr=${encodeURIComponent(mrUrl)}`,
+      manage: 'https://nudge.example.com/me/tok',
     };
     const out = renderDigest(digest({ items, totalItems: 200 }), TEMPLATE, links);
     expect(Buffer.byteLength(JSON.stringify(out.card), 'utf8')).toBeLessThanOrEqual(24_000);

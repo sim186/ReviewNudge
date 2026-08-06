@@ -1,4 +1,4 @@
-# MergeRequestAlarm
+# ReviewNudge
 
 Tells people which merge requests on your self-hosted GitLab are waiting for **them** — as
 reviewer, assignee, or thread participant — as one digest per person, by email, Microsoft
@@ -30,6 +30,7 @@ you and for how long.
 - [Setting up the Teams workflow](#setting-up-the-teams-workflow)
 - [Commands](#commands)
 - [Running as a scheduled job instead](#running-as-a-scheduled-job-instead)
+- [Upgrading from MergeRequestAlarm](#upgrading-from-mergerequestalarm)
 - [Troubleshooting](#troubleshooting)
 - [Development](#development)
 
@@ -63,10 +64,10 @@ each row shows how long it has been waiting.
 Requires Node.js 22 or newer.
 
 ```bash
-git clone <this repo> && cd MergeRequestAlarm
+git clone <this repo> && cd review-nudge
 npm ci
 
-cp .env.example .env                               # fill in GITLAB_TOKEN and MRA_ADMIN_PASSWORD
+cp .env.example .env                               # fill in GITLAB_TOKEN and NUDGE_ADMIN_PASSWORD
 cp config/config.example.yaml config/config.yaml   # set your URL and groups
 
 npm run build
@@ -128,9 +129,9 @@ docker compose up --build
 
 The panel is published to `127.0.0.1:8080` only; put a reverse proxy in front of it to
 expose it further. `config.yaml` is mounted read-only — the application never writes it —
-and the SQLite database lives in the `mra-data` volume, which must persist.
+and the SQLite database lives in the `nudge-data` volume, which must persist.
 
-Set `MRA_DRY_RUN=1` in `.env` for the first run to scan and record without delivering.
+Set `NUDGE_DRY_RUN=1` in `.env` for the first run to scan and record without delivering.
 
 > The image has not been built in this environment (no Docker daemon available), so the
 > `Dockerfile` and `compose.yaml` are unverified beyond `docker compose config`. Everything
@@ -140,7 +141,7 @@ Set `MRA_DRY_RUN=1` in `.env` for the first run to scan and record without deliv
 
 Configuration lives in two places, and the split matters:
 
-| | `config/config.yaml` | SQLite (`data/mra.db`) |
+| | `config/config.yaml` | SQLite (`data/nudge.db`) |
 | --- | --- | --- |
 | Holds | infrastructure and secrets: GitLab URL and token, SMTP, Teams URL, admin password | operator changes: exclusions, recipients, snoozes, the pause switch, quiet hours, rule toggles |
 | Written by | you | the admin panel |
@@ -195,7 +196,7 @@ Five independent mechanisms, applied in this order:
 
 | # | Mechanism | Effect | Still scans? |
 | --- | --- | --- | --- |
-| 1 | **Global pause** (`silence.enabled`, the panel toggle, or `MRA_SILENCE=1`) | Nothing is delivered to anyone | **Yes** — so Pending stays accurate and the audit log records what was withheld |
+| 1 | **Global pause** (`silence.enabled`, the panel toggle, or `NUDGE_SILENCE=1`) | Nothing is delivered to anyone | **Yes** — so Pending stays accurate and the audit log records what was withheld |
 | 2 | **Holiday**, then **non-working day**, then **quiet hours** | The whole run is skipped | No |
 | 3 | **Per-recipient snooze** (`snooze_until`, or the recipient pausing themselves) | That person's digest is dropped | Yes |
 | 4 | **Personal mutes** set by a recipient | That merge request is dropped from *that person's* digest only | Yes |
@@ -212,7 +213,7 @@ half-finished edit cannot silently stop every notification.
 A snooze runs to the *start* of its date: snoozed until `2026-09-01` means quiet through 31
 August, and a digest again on 1 September.
 
-`MRA_SILENCE=1` can force silence **on** but never off, so it cannot quietly defeat the
+`NUDGE_SILENCE=1` can force silence **on** but never off, so it cannot quietly defeat the
 panel toggle.
 
 ## Muting things yourself
@@ -242,7 +243,7 @@ self-service pause lands in the audit log with the actor `recipient`.
 
 Two things must be true for the links to appear:
 
-1. **A stable signing secret.** Set `MRA_SESSION_SECRET` (or `admin.session_secret`). The
+1. **A stable signing secret.** Set `NUDGE_SESSION_SECRET` (or `admin.session_secret`). The
    links are signed with it; without one, digests go out with no links rather than links
    that break on the next restart. Rotating the secret invalidates every outstanding link,
    which is how you revoke them.
@@ -262,8 +263,8 @@ person. It never reaches the admin panel, which keeps its own password.
 ## The admin panel
 
 `npm start` serves it on `http://127.0.0.1:8080`. One shared password
-(`MRA_ADMIN_PASSWORD`, minimum 8 characters) gates a login form that sets a signed,
-httpOnly session cookie. Set `MRA_SESSION_SECRET` to a random 32-byte hex string so
+(`NUDGE_ADMIN_PASSWORD`, minimum 8 characters) gates a login form that sets a signed,
+httpOnly session cookie. Set `NUDGE_SESSION_SECRET` to a random 32-byte hex string so
 sessions survive a restart:
 
 ```bash
@@ -271,7 +272,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
 It binds to loopback by default, so exposing it is a deliberate act — put a reverse proxy
-in front, or set `MRA_ADMIN_HOST`.
+in front, or set `NUDGE_ADMIN_HOST`.
 
 | Page | What it is for |
 | --- | --- |
@@ -350,13 +351,13 @@ on **30 April 2026** and no longer work. Use Power Automate.
 
 **The content is already per-person; where it lands is decided by your flow.**
 
-MergeRequestAlarm sends **one HTTP POST per recipient**, each containing only that person's
+ReviewNudge sends **one HTTP POST per recipient**, each containing only that person's
 merge requests and their own identity. If five people are blocking work, that is five
 separate POSTs to the same workflow URL. Nothing is broadcast, and nobody's payload
 contains anybody else's list. A recipient with no `teams_upn` is skipped rather than
 posted somewhere unroutable.
 
-What MergeRequestAlarm cannot do is decide whether that becomes a direct message or a
+What ReviewNudge cannot do is decide whether that becomes a direct message or a
 channel post — that is the action you choose inside the flow. Both are supported by the
 same payload:
 
@@ -424,15 +425,18 @@ Check it works with `node dist/cli.js test-notify --recipient alice`.
 
 | Command | What it does |
 | --- | --- |
-| `mra serve` | Scheduler plus admin panel. The default for `npm start` and the container |
-| `mra run --once` | One cycle now. `--dry-run` prints instead of delivering |
-| `mra check-config` | Validates the config file offline. `--remote` also contacts GitLab and reads each group |
-| `mra test-notify --recipient <user>` | Sends one sample digest over every configured channel |
+| `nudge serve` | Scheduler plus admin panel. The default for `npm start` and the container |
+| `nudge run --once` | One cycle now. `--dry-run` prints instead of delivering |
+| `nudge check-config` | Validates the config file offline. `--remote` also contacts GitLab and reads each group |
+| `nudge test-notify --recipient <user>` | Sends one sample digest over every configured channel |
 
 Common flags: `-c, --config <path>`, `--dry-run`.
 
-Environment: `MRA_CONFIG`, `MRA_DATA_DIR`, `MRA_DRY_RUN`, `MRA_SILENCE`, `MRA_ADMIN_HOST`,
-`MRA_ADMIN_PASSWORD`, `MRA_SESSION_SECRET`, `LOG_LEVEL`, `LOG_FORMAT`.
+Environment: `NUDGE_CONFIG`, `NUDGE_DATA_DIR`, `NUDGE_DRY_RUN`, `NUDGE_SILENCE`,
+`NUDGE_ADMIN_HOST`, `NUDGE_ADMIN_PASSWORD`, `NUDGE_SESSION_SECRET`, `LOG_LEVEL`, `LOG_FORMAT`.
+
+The pre-rename `MRA_*` names are still read as a fallback — see
+[Upgrading from MergeRequestAlarm](#upgrading-from-mergerequestalarm).
 
 ## Running as a scheduled job instead
 
@@ -440,12 +444,46 @@ Environment: `MRA_CONFIG`, `MRA_DATA_DIR`, `MRA_DRY_RUN`, `MRA_SILENCE`, `MRA_AD
 `admin.enabled: false` and drive it externally:
 
 ```cron
-0 9 * * 1-5  cd /opt/mergerequestalarm && node dist/cli.js run --once >> /var/log/mra.log 2>&1
+0 9 * * 1-5  cd /opt/review-nudge && node dist/cli.js run --once >> /var/log/nudge.log 2>&1
 ```
 
 Or as a Kubernetes CronJob using the same image with `args: ["run", "--once"]`. The exit
 code is non-zero when every delivery failed, so your scheduler can alert on it. The SQLite
 database still needs to persist between runs.
+
+## Upgrading from MergeRequestAlarm
+
+The project used to be called MergeRequestAlarm and its environment variables were prefixed
+`MRA_`. Nothing you already have breaks: `MRA_*` is still read wherever `NUDGE_*` is, and
+`NUDGE_*` wins if both are set. Startup logs a warning listing any old names it finds, so
+you can see at a glance what is left to rename.
+
+Two things do need a look:
+
+**The database file.** It is now `data/nudge.db`. If only `data/mra.db` exists, that file is
+opened as-is — an upgrade never silently starts from an empty database. Rename it at your
+leisure while the service is stopped, taking the `-wal` and `-shm` files with it:
+
+```bash
+cd data && for f in mra.db*; do mv "$f" "nudge.db${f#mra.db}"; done
+```
+
+**The Compose volume.** `compose.yaml` now declares `nudge-data` where it declared
+`mra-data`. Compose would treat that as a brand-new empty volume, so either keep the old
+name in your own file, or move the data across before the first `docker compose up`:
+
+```bash
+docker compose down
+docker volume create <project>_nudge-data
+docker run --rm -v <project>_mra-data:/from -v <project>_nudge-data:/to alpine \
+  sh -c 'cp -a /from/. /to/'
+```
+
+`<project>` is the Compose project name — the directory name unless you set one.
+
+The admin session cookie was also renamed, so everyone logged into the panel is asked to log
+in once more. Config files are untouched: `${MRA_ADMIN_PASSWORD}` in your own `config.yaml`
+names your own variable and keeps working, whatever you call it.
 
 ## Troubleshooting
 
@@ -482,7 +520,7 @@ received" trigger, or the card action is not reading the posted payload. Retry w
 ## Development
 
 ```bash
-npm test          # 213 tests
+npm test          # 337 tests
 npm run typecheck
 npm run lint
 npm run dev       # tsx watch, serve mode
@@ -498,7 +536,7 @@ src/
   db/        SQLite schema, repository, audit log
   gitlab/    GraphQL client and queries
   domain/    filters, the rule engine, digest building, silencing
-  notify/    rendering, email, Teams, console
+  notify/    rendering, email, Teams, Slack, Telegram, console
   admin/     Fastify server, auth, pages
   run.ts     one full cycle
   scheduler.ts  cron loop

@@ -28,7 +28,7 @@ notifications:
   channels: [email]
 email:
   smtp: { host: smtp.example.com }
-  from: mra@example.com
+  from: nudge@example.com
 recipients:
   - gitlab_username: alice
     email: alice@example.com
@@ -91,11 +91,17 @@ describe('ConfigProvider', () => {
     ]);
   });
 
-  it('lets MRA_SILENCE force silence on but never off', () => {
-    expect(provider(db, { MRA_SILENCE: '1' }).resolve().silence.enabled).toBe(true);
+  it('lets NUDGE_SILENCE force silence on but never off', () => {
+    expect(provider(db, { NUDGE_SILENCE: '1' }).resolve().silence.enabled).toBe(true);
 
     new Repo(db).setSetting('silence.enabled', true);
-    expect(provider(db, { MRA_SILENCE: '0' }).resolve().silence.enabled).toBe(true);
+    expect(provider(db, { NUDGE_SILENCE: '0' }).resolve().silence.enabled).toBe(true);
+  });
+
+  it('still honours the pre-rename MRA_SILENCE', () => {
+    // Someone upgrading has the old name in their unit file; a rename must not
+    // quietly un-pause a deployment that was deliberately paused.
+    expect(provider(db, { MRA_SILENCE: '1' }).resolve().silence.enabled).toBe(true);
   });
 
   it('uses file recipients until the database is seeded, then the database', () => {

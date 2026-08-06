@@ -1,4 +1,4 @@
--- MergeRequestAlarm database schema.
+-- ReviewNudge database schema.
 --
 -- Holds everything an operator changes at runtime, plus run history and the audit
 -- log. Infrastructure and secrets stay in config.yaml and never appear here.

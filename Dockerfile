@@ -20,8 +20,8 @@ RUN npm prune --omit=dev
 FROM node:22-bookworm-slim AS runtime
 
 ENV NODE_ENV=production \
-    MRA_CONFIG=/app/config/config.yaml \
-    MRA_DATA_DIR=/app/data \
+    NUDGE_CONFIG=/app/config/config.yaml \
+    NUDGE_DATA_DIR=/app/data \
     LOG_FORMAT=json
 
 WORKDIR /app

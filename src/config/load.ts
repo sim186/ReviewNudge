@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse } from 'yaml';
 import { z } from 'zod';
+import { readEnv } from '../env.js';
 import { configSchema, type Config } from './schema.js';
 
 export class ConfigError extends Error {
@@ -72,7 +73,7 @@ export function parseConfig(raw: string, file: string, env: NodeJS.ProcessEnv = 
 }
 
 export function defaultConfigPath(env: NodeJS.ProcessEnv = process.env): string {
-  return resolve(env.MRA_CONFIG ?? 'config/config.yaml');
+  return resolve(readEnv('CONFIG', env) ?? 'config/config.yaml');
 }
 
 export function loadConfig(file?: string, env: NodeJS.ProcessEnv = process.env): Config {
@@ -85,7 +86,7 @@ export function loadConfig(file?: string, env: NodeJS.ProcessEnv = process.env):
     if (code === 'ENOENT') {
       throw new ConfigError(
         `config file not found at ${path}\n` +
-          `Copy config/config.example.yaml to config/config.yaml, or point MRA_CONFIG at your file.`,
+          `Copy config/config.example.yaml to config/config.yaml, or point NUDGE_CONFIG at your file.`,
       );
     }
     throw new ConfigError(`could not read ${path}: ${(err as Error).message}`);

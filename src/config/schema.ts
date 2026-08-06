@@ -170,7 +170,7 @@ export const configSchema = z
         code: z.ZodIssueCode.custom,
         path: ['admin', 'password'],
         message:
-          'admin.password must be at least 8 characters (set MRA_ADMIN_PASSWORD), or set admin.enabled to false',
+          'admin.password must be at least 8 characters (set NUDGE_ADMIN_PASSWORD), or set admin.enabled to false',
       });
     }
 

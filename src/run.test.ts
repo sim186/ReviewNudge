@@ -32,7 +32,7 @@ notifications:
   channels: [email]
 email:
   smtp: { host: smtp.example.com }
-  from: mra@example.com
+  from: nudge@example.com
 recipients:
   - gitlab_username: alice
     email: alice@example.com

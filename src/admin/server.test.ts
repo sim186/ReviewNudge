@@ -28,7 +28,7 @@ notifications:
   channels: [email]
 email:
   smtp: { host: smtp.example.com }
-  from: mra@example.com
+  from: nudge@example.com
 recipients:
   - gitlab_username: alice
     email: alice@example.com
@@ -73,9 +73,9 @@ describe('admin server', () => {
       payload: { password: PASSWORD },
     });
     expect(res.statusCode).toBe(303);
-    const cookie = res.cookies.find((c) => c.name === 'mra_session');
+    const cookie = res.cookies.find((c) => c.name === 'nudge_session');
     expect(cookie).toBeDefined();
-    return `mra_session=${cookie!.value}`;
+    return `nudge_session=${cookie!.value}`;
   }
 
   const get = (url: string, cookie: string) => app.inject({ method: 'GET', url, headers: { cookie } });
@@ -110,7 +110,7 @@ describe('admin server', () => {
     });
 
     it('rejects a forged session cookie', async () => {
-      const res = await get('/', 'mra_session=1786000000000');
+      const res = await get('/', 'nudge_session=1786000000000');
       expect(res.statusCode).toBe(401);
     });
 

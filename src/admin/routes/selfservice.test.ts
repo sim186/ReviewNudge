@@ -21,14 +21,14 @@ gitlab:
 admin:
   enabled: true
   password: a-good-password
-  host: mra.example.com
+  host: nudge.example.com
 schedule:
   timezone: Europe/Zurich
 notifications:
   channels: [email]
 email:
   smtp: { host: smtp.example.com }
-  from: mra@example.com
+  from: nudge@example.com
 recipients:
   - gitlab_username: alice
     email: alice@example.com

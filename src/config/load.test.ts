@@ -13,7 +13,7 @@ notifications:
   channels: [email]
 email:
   smtp: { host: smtp.example.com }
-  from: mra@example.com
+  from: nudge@example.com
 `;
 
 describe('interpolateEnv', () => {
@@ -97,7 +97,7 @@ silence:
     const raw = readFileSync('config/config.example.yaml', 'utf8');
     const cfg = parseConfig(raw, 'config.example.yaml', {
       GITLAB_TOKEN: 'glpat-test',
-      MRA_ADMIN_PASSWORD: 'a-long-enough-password',
+      NUDGE_ADMIN_PASSWORD: 'a-long-enough-password',
       SMTP_PASS: 'secret',
       TEAMS_WORKFLOW_URL: 'https://example.logic.azure.com/workflows/abc',
     });

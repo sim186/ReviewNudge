@@ -4,6 +4,7 @@ import { startAdminServer } from './admin/server.js';
 import { generateSessionSecret } from './admin/auth.js';
 import { ConfigError } from './config/load.js';
 import { GitLabClient } from './gitlab/client.js';
+import { readEnv, readEnvFlag, legacyEnvNames } from './env.js';
 import { logger } from './logger.js';
 import { buildNotifiers } from './notify/factory.js';
 import { renderDigest } from './notify/render.js';
@@ -37,7 +38,7 @@ function parseArgs(argv: string[]): Args {
 
 /** The stable secret used for both admin sessions and recipient links. */
 function resolveSecret(config: { admin: { session_secret: string } }): string {
-  return config.admin.session_secret || process.env.MRA_SESSION_SECRET || '';
+  return config.admin.session_secret || readEnv('SESSION_SECRET') || '';
 }
 
 function flagString(args: Args, ...names: string[]): string | undefined {
@@ -52,24 +53,26 @@ function flagBool(args: Args, ...names: string[]): boolean {
   return names.some((name) => args.flags.has(name));
 }
 
-const USAGE = `MergeRequestAlarm — tells people which merge requests are waiting on them.
+const USAGE = `ReviewNudge — tells people which merge requests are waiting on them.
 
 Usage:
-  mra serve                     Run the scheduler and the admin panel
-  mra run [--once] [--dry-run]  Run one cycle now (--once is the default)
-  mra check-config [--remote]   Validate the config file; --remote also tests GitLab
-  mra test-notify --recipient U Send one sample digest to a recipient
-  mra help
+  nudge serve                     Run the scheduler and the admin panel
+  nudge run [--once] [--dry-run]  Run one cycle now (--once is the default)
+  nudge check-config [--remote]   Validate the config file; --remote also tests GitLab
+  nudge test-notify --recipient U Send one sample digest to a recipient
+  nudge help
 
 Options:
-  -c, --config <path>   Config file (default: config/config.yaml, or $MRA_CONFIG)
+  -c, --config <path>   Config file (default: config/config.yaml, or $NUDGE_CONFIG)
       --dry-run         Render digests to stdout instead of delivering them
       --remote          Contact GitLab as part of check-config
       --recipient <u>   GitLab username to send the sample to
 
 Environment:
-  MRA_CONFIG, MRA_DATA_DIR, MRA_DRY_RUN, MRA_SILENCE, MRA_ADMIN_HOST,
-  MRA_ADMIN_PASSWORD, MRA_SESSION_SECRET, LOG_LEVEL, LOG_FORMAT
+  NUDGE_CONFIG, NUDGE_DATA_DIR, NUDGE_DRY_RUN, NUDGE_SILENCE, NUDGE_ADMIN_HOST,
+  NUDGE_ADMIN_PASSWORD, NUDGE_SESSION_SECRET, LOG_LEVEL, LOG_FORMAT
+
+  The former MRA_* names still work; NUDGE_* wins where both are set.
 `;
 
 async function commandCheckConfig(args: Args): Promise<number> {
@@ -121,7 +124,7 @@ async function commandCheckConfig(args: Args): Promise<number> {
 
 async function commandRun(args: Args): Promise<number> {
   const app = createApp(flagString(args, 'c', 'config'));
-  const dryRun = flagBool(args, 'dry-run') || process.env.MRA_DRY_RUN === '1';
+  const dryRun = flagBool(args, 'dry-run') || readEnvFlag('DRY_RUN');
 
   try {
     const summary = await executeRun(app.provider, app.repo, app.audit, {
@@ -150,7 +153,7 @@ async function commandRun(args: Args): Promise<number> {
 async function commandTestNotify(args: Args): Promise<number> {
   const username = flagString(args, 'recipient', 'r');
   if (!username) {
-    logger.error('give a recipient, for example: mra test-notify --recipient alice');
+    logger.error('give a recipient, for example: nudge test-notify --recipient alice');
     return 1;
   }
 
@@ -173,7 +176,7 @@ async function commandTestNotify(args: Args): Promise<number> {
       {
         mr: {
           url: `${config.gitlab.url}/example/project/-/merge_requests/1`,
-          title: 'Sample merge request from MergeRequestAlarm',
+          title: 'Sample merge request from ReviewNudge',
           projectPath: 'example/project',
           iid: '1',
           author: 'someone-else',
@@ -229,7 +232,7 @@ async function commandTestNotify(args: Args): Promise<number> {
 async function commandServe(args: Args): Promise<number> {
   const app = createApp(flagString(args, 'c', 'config'));
   const config = app.provider.resolve();
-  const dryRun = flagBool(args, 'dry-run') || process.env.MRA_DRY_RUN === '1';
+  const dryRun = flagBool(args, 'dry-run') || readEnvFlag('DRY_RUN');
 
   const sessionSecret = resolveSecret(config);
   if (!sessionSecret) {
@@ -277,6 +280,14 @@ async function commandServe(args: Args): Promise<number> {
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
+
+  const legacy = legacyEnvNames();
+  if (legacy.length > 0) {
+    logger.warn(
+      { variables: legacy },
+      'these environment variables use the old MRA_ prefix; they still work, but NUDGE_ is the current name',
+    );
+  }
 
   try {
     switch (args.command) {

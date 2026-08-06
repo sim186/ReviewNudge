@@ -92,12 +92,12 @@ export function page(options: PageOptions, body: string | SafeHtml): string {
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>${options.title} · MergeRequestAlarm</title>
+        <title>${options.title} · ReviewNudge</title>
         <link rel="stylesheet" href="/static/style.css" />
       </head>
       <body>
         <header class="topbar">
-          <div class="brand">MergeRequestAlarm</div>
+          <div class="brand">ReviewNudge</div>
           <nav>${nav}</nav>
           <form method="post" action="/logout" class="logout">
             <button type="submit">Sign out</button>
@@ -115,12 +115,12 @@ export function loginPage(error?: string): string {
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>Sign in · MergeRequestAlarm</title>
+        <title>Sign in · ReviewNudge</title>
         <link rel="stylesheet" href="/static/style.css" />
       </head>
       <body class="centered">
         <form method="post" action="/login" class="card login">
-          <h1>MergeRequestAlarm</h1>
+          <h1>ReviewNudge</h1>
           ${error ? html`<div class="banner error">${error}</div>` : null}
           <label for="password">Admin password</label>
           <input

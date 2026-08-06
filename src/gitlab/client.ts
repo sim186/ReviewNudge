@@ -120,7 +120,7 @@ export class GitLabClient {
           headers: {
             'content-type': 'application/json',
             authorization: `Bearer ${this.options.token}`,
-            'user-agent': 'MergeRequestAlarm',
+            'user-agent': 'ReviewNudge',
           },
           body: JSON.stringify({ query, variables }),
           signal: controller.signal,

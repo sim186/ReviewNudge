@@ -1,7 +1,7 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
-export const SESSION_COOKIE = 'mra_session';
+export const SESSION_COOKIE = 'nudge_session';
 
 /** Constant-time comparison that also tolerates differing lengths. */
 export function passwordMatches(supplied: string, expected: string): boolean {

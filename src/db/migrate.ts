@@ -1,18 +1,28 @@
 import Database from 'better-sqlite3';
 import { mkdirSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readEnv } from '../env.js';
 
 export type Db = Database.Database;
 
 const here = dirname(fileURLToPath(import.meta.url));
 
 export function dataDir(env: NodeJS.ProcessEnv = process.env): string {
-  return resolve(env.MRA_DATA_DIR ?? 'data');
+  return resolve(readEnv('DATA_DIR', env) ?? 'data');
 }
 
+/**
+ * The database file, preferring the current name but adopting the one written under
+ * the old project name when it is the only one present — a rename must not look like
+ * data loss.
+ */
 export function databasePath(env: NodeJS.ProcessEnv = process.env): string {
-  return resolve(dataDir(env), 'mra.db');
+  const dir = dataDir(env);
+  const current = resolve(dir, 'nudge.db');
+  const legacy = resolve(dir, 'mra.db');
+  return !existsSync(current) && existsSync(legacy) ? legacy : current;
 }
 
 /**

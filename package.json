@@ -1,14 +1,14 @@
 {
-  "name": "mergerequestalarm",
+  "name": "review-nudge",
   "version": "0.1.0",
-  "description": "Notifies GitLab users about merge requests waiting for their input, via email or Microsoft Teams.",
+  "description": "Nudges GitLab users about merge requests waiting for their input, over email, Teams, Slack or Telegram.",
   "type": "module",
   "private": true,
   "engines": {
     "node": ">=22.0.0"
   },
   "bin": {
-    "mra": "./dist/cli.js"
+    "nudge": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json && npm run copy-assets",

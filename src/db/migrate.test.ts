@@ -3,14 +3,14 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { openDatabase } from './migrate.js';
+import { databasePath, openDatabase } from './migrate.js';
 import { Repo } from './repo.js';
 
 describe('openDatabase', () => {
   let dir: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'mra-migrate-'));
+    dir = mkdtempSync(join(tmpdir(), 'nudge-migrate-'));
   });
 
   afterEach(() => {
@@ -76,5 +76,37 @@ describe('openDatabase', () => {
 
     const columns = columnsOf(path, 'recipients');
     expect(columns.filter((c) => c === 'slack_id')).toHaveLength(1);
+  });
+});
+
+describe('databasePath', () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'nudge-path-'));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('uses the current name on a fresh install', () => {
+    expect(databasePath({ NUDGE_DATA_DIR: dir })).toBe(join(dir, 'nudge.db'));
+  });
+
+  it('adopts the pre-rename file when it is the only one there', () => {
+    // Otherwise the rename would present itself as a wiped database.
+    openDatabase(join(dir, 'mra.db')).close();
+    expect(databasePath({ NUDGE_DATA_DIR: dir })).toBe(join(dir, 'mra.db'));
+  });
+
+  it('prefers the current name once both exist', () => {
+    openDatabase(join(dir, 'mra.db')).close();
+    openDatabase(join(dir, 'nudge.db')).close();
+    expect(databasePath({ NUDGE_DATA_DIR: dir })).toBe(join(dir, 'nudge.db'));
+  });
+
+  it('honours the pre-rename data directory variable', () => {
+    expect(databasePath({ MRA_DATA_DIR: dir })).toBe(join(dir, 'nudge.db'));
   });
 });
