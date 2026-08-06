@@ -64,8 +64,21 @@ export function escapeCardText(value: string): string {
   return value.replace(/([[\]*_`~])/g, '\\$1');
 }
 
+/** Standalone label for an age column, where "today" reads naturally on its own. */
 export function waitingLabel(days: number): string {
   if (days <= 0) return 'today';
+  if (days === 1) return '1 day';
+  return `${days} days`;
+}
+
+/**
+ * The same age inside a sentence, as in "waiting …".
+ *
+ * `waitingLabel` cannot be reused here: "waiting today" is not English. This stays a
+ * duration rather than a point in time so the prefix always reads correctly.
+ */
+export function waitingPhrase(days: number): string {
+  if (days <= 0) return 'less than a day';
   if (days === 1) return '1 day';
   return `${days} days`;
 }
@@ -103,7 +116,9 @@ function renderText(digest: Digest, links?: SelfServiceLinks | null): string {
 
   for (const item of digest.items) {
     lines.push(`* ${item.mr.title}`);
-    lines.push(`  ${item.mr.projectPath} !${item.mr.iid} — waiting ${waitingLabel(item.waitingDays)}`);
+    lines.push(
+      `  ${item.mr.projectPath} !${item.mr.iid} — waiting ${waitingPhrase(item.waitingDays)}`,
+    );
     lines.push(`  ${item.detail}`);
     lines.push(`  ${item.mr.url}`);
     if (links) lines.push(`  Mute this one: ${links.mute(item.mr.url)}`);
@@ -408,7 +423,7 @@ function renderSlackBlocks(
       elements: [
         {
           type: 'mrkdwn',
-          text: `${escapeSlackText(item.mr.projectPath)} !${escapeSlackText(item.mr.iid)} · ${escapeSlackText(kinds)} · waiting ${waitingLabel(item.waitingDays)}${muteSuffix}`,
+          text: `${escapeSlackText(item.mr.projectPath)} !${escapeSlackText(item.mr.iid)} · ${escapeSlackText(kinds)} · waiting ${waitingPhrase(item.waitingDays)}${muteSuffix}`,
         },
       ],
     });
@@ -449,7 +464,7 @@ function renderTelegramHtml(digest: Digest, links?: SelfServiceLinks | null): st
       `• <a href="${escapeTelegramHtml(item.mr.url)}">${escapeTelegramHtml(item.mr.title)}</a>`,
     );
     lines.push(
-      `  <i>${escapeTelegramHtml(item.mr.projectPath)} !${escapeTelegramHtml(item.mr.iid)} · ${escapeTelegramHtml(kinds)} · waiting ${waitingLabel(item.waitingDays)}</i>`,
+      `  <i>${escapeTelegramHtml(item.mr.projectPath)} !${escapeTelegramHtml(item.mr.iid)} · ${escapeTelegramHtml(kinds)} · waiting ${waitingPhrase(item.waitingDays)}</i>`,
     );
     lines.push(`  ${escapeTelegramHtml(item.detail)}`);
     if (links) {

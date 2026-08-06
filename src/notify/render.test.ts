@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { Digest, DigestItem } from '../domain/digest.js';
 import type { ReasonKind } from '../domain/reasons.js';
-import { escapeCardText, escapeHtml, renderDigest, renderSubject, waitingLabel } from './render.js';
+import {
+  escapeCardText,
+  escapeHtml,
+  renderDigest,
+  renderSubject,
+  waitingLabel,
+  waitingPhrase,
+} from './render.js';
 
 function item(overrides: Partial<DigestItem> = {}): DigestItem {
   return {
@@ -62,6 +69,26 @@ describe('helpers', () => {
     expect(waitingLabel(0)).toBe('today');
     expect(waitingLabel(1)).toBe('1 day');
     expect(waitingLabel(9)).toBe('9 days');
+  });
+
+  it('uses a duration, not a day, when the age sits inside a sentence', () => {
+    // "waiting today" is not English, which is why this differs from waitingLabel.
+    expect(waitingPhrase(0)).toBe('less than a day');
+    expect(waitingPhrase(1)).toBe('1 day');
+    expect(waitingPhrase(9)).toBe('9 days');
+  });
+
+  it('never emits "waiting today" in any prose body', () => {
+    const fresh = item({ waitingDays: 0 });
+    const links = { mute: () => 'https://x/m', manage: 'https://x/me' };
+    const out = renderDigest(digest({ items: [fresh] }), TEMPLATE, links);
+
+    expect(out.text).toContain('waiting less than a day');
+    expect(out.text).not.toContain('waiting today');
+    expect(out.telegramHtml).not.toContain('waiting today');
+    expect(JSON.stringify(out.slackBlocks)).not.toContain('waiting today');
+    // The standalone HTML age column still reads "today", which is correct there.
+    expect(out.html).toContain('today');
   });
 });
 
