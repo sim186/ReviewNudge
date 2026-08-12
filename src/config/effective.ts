@@ -52,6 +52,7 @@ export interface EffectiveConfig {
 export const SETTING_SCHEMAS = {
   'schedule.cron': z.string().min(1),
   'schedule.timezone': z.string().min(1),
+  'gitlab.groups': z.array(z.string().min(1)).min(1),
   'rules.reviewer_not_approved': z.boolean(),
   'rules.assignee_action_pending': z.boolean(),
   'rules.unresolved_threads': z.boolean(),
@@ -188,7 +189,10 @@ export class ConfigProvider {
     const envSilence = readEnvFlag('SILENCE', this.env);
 
     return {
-      gitlab: f.gitlab,
+      gitlab: {
+        ...f.gitlab,
+        groups: this.override('gitlab.groups', f.gitlab.groups),
+      },
       admin: f.admin,
       email: f.email,
       teams: f.teams,

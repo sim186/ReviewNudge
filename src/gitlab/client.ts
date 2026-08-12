@@ -3,13 +3,16 @@ import {
   CURRENT_USER_QUERY,
   FULL_CAPABILITIES,
   MERGE_REQUEST_DISCUSSIONS_QUERY,
+  ACCESSIBLE_GROUPS_QUERY,
   groupMergeRequestsQuery,
   groupProjectsQuery,
   type Capabilities,
 } from './queries.js';
 import type {
+  AccessibleGroupsResponse,
   EnrichedMergeRequest,
   GqlDiscussion,
+  GqlGroup,
   GqlMergeRequest,
   GqlProject,
   GroupMergeRequestsResponse,
@@ -289,6 +292,27 @@ export class GitLabClient {
       'fetched group projects',
     );
     return { groupPath, groupName, projects: collected };
+  }
+
+  /** Every group the token can see, following cursors. */
+  async fetchAccessibleGroups(): Promise<GqlGroup[]> {
+    const collected: GqlGroup[] = [];
+    let after: string | null = null;
+
+    for (;;) {
+      const variables: Record<string, unknown> = { first: this.pageSize, after };
+      const data: AccessibleGroupsResponse = await this.request<AccessibleGroupsResponse>(
+        ACCESSIBLE_GROUPS_QUERY,
+        variables,
+      );
+
+      collected.push(...data.groups.nodes);
+      if (!data.groups.pageInfo.hasNextPage || !data.groups.pageInfo.endCursor) break;
+      after = data.groups.pageInfo.endCursor;
+    }
+
+    this.log.debug({ count: collected.length }, 'fetched accessible groups');
+    return collected;
   }
 
   /** Turns a capability-related GraphQL error into a reduced query. */

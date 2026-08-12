@@ -150,3 +150,19 @@ query GroupProjects(
   }
 }`;
 }
+
+/** Every group the token can see, following cursors. */
+export const ACCESSIBLE_GROUPS_QUERY = `
+query AccessibleGroups($first: Int!, $after: String) {
+  groups(first: $first, after: $after) {
+    pageInfo { hasNextPage endCursor }
+    nodes {
+      id
+      fullPath
+      name
+      description
+      webUrl
+      parent { id fullPath }
+    }
+  }
+}`;

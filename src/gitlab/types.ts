@@ -111,3 +111,16 @@ export interface GroupProjectsResponse {
     projects: { pageInfo: PageInfo; nodes: GqlProject[] };
   } | null;
 }
+
+export interface GqlGroup {
+  id: string;
+  fullPath: string;
+  name: string;
+  description: string | null;
+  webUrl: string;
+  parent: { id: string; fullPath: string } | null;
+}
+
+export interface AccessibleGroupsResponse {
+  groups: { pageInfo: PageInfo; nodes: GqlGroup[] };
+}
