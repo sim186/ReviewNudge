@@ -27,6 +27,8 @@ const gitlabSchema = z.object({
     .array(z.string().min(1))
     .min(1)
     .describe('Full paths of groups to scan, e.g. "engineering" or "platform/infra"'),
+  /** If non-empty, only these project full paths are scanned (whitelist). */
+  projects: z.array(z.string().min(1)).default([]),
   include_subgroups: z.boolean().default(true),
   timeout_ms: z.number().int().positive().default(30_000),
   page_size: z.number().int().min(1).max(100).default(50),

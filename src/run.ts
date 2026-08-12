@@ -169,14 +169,21 @@ export async function executeRun(
     // A merge request visible through two groups must not be counted twice.
     let unique = new Map(raw.map((mr) => [mr.id, mr]));
 
-    if (options.projectFilter && options.projectFilter.length > 0) {
-      const allowed = new Set(options.projectFilter);
+    // Build a project whitelist from config + CLI (CLI flag further narrows config).
+    const configProjects = config.gitlab.projects;
+    const cliProjects = options.projectFilter && options.projectFilter.length > 0
+      ? options.projectFilter
+      : null;
+    const projectWhitelist = cliProjects ?? (configProjects.length > 0 ? configProjects : null);
+
+    if (projectWhitelist) {
+      const allowed = new Set(projectWhitelist);
       unique = new Map(
         [...unique.entries()].filter(([, mr]) =>
           allowed.has(mr.project?.fullPath ?? ''),
         ),
       );
-      log.debug({ kept: unique.size, filter: options.projectFilter }, 'applied project filter');
+      log.debug({ kept: unique.size, filter: [...allowed] }, 'applied project filter');
     }
 
     const filterOptions = {

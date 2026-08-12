@@ -8,6 +8,8 @@ export function registerProjects(app: FastifyInstance, ctx: AdminContext): void 
   app.get('/projects', async (request, reply) => {
     const config = ctx.provider.resolve();
     const scanGroups = new Set(config.gitlab.groups);
+    const scanProjects = new Set(config.gitlab.projects);
+    const hasProjectOverride = scanProjects.size > 0;
 
     const client = new GitLabClient({
       url: config.gitlab.url,
@@ -58,9 +60,7 @@ export function registerProjects(app: FastifyInstance, ctx: AdminContext): void 
             <div class="actions">
               <button type="submit">Save scan groups</button>
               ${ctx.provider.hasOverride('gitlab.groups')
-                ? raw(html`<form method="post" action="/projects/reset" class="inline" onsubmit="return confirm('Reset scan groups to config.yaml?')">
-                    <button type="submit" class="secondary">Reset to config.yaml</button>
-                  </form>`)
+                ? raw(html`<button type="submit" formaction="/projects/reset-groups" class="secondary" onclick="return confirm('Reset scan groups to config.yaml?')">Reset</button>`)
                 : ''}
             </div>
           </form>`;
@@ -84,7 +84,7 @@ export function registerProjects(app: FastifyInstance, ctx: AdminContext): void 
 
     const projectTableHtml = projectGroups.map((group) => {
       const header = group.projects.length > 0
-        ? html`<tr class="group-header"><td colspan="4">
+        ? html`<tr class="group-header"><td colspan="5">
               <strong>${group.groupName}</strong>
               <span class="chip">${group.groupPath}</span>
               <span class="chip">${group.projects.length} projects</span>
@@ -93,6 +93,15 @@ export function registerProjects(app: FastifyInstance, ctx: AdminContext): void 
 
       const rows = group.projects.map(
         (p) => html`<tr class="${p.archived ? 'muted' : ''}">
+          <td class="num">
+            <input
+              type="checkbox"
+              name="project"
+              value="${p.fullPath}"
+              ${hasProjectOverride ? (scanProjects.has(p.fullPath) ? 'checked' : '') : 'checked'}
+              ${hasProjectOverride ? '' : 'disabled'}
+            />
+          </td>
           <td>${p.name}</td>
           <td><code>${p.fullPath}</code></td>
           <td>
@@ -104,7 +113,7 @@ export function registerProjects(app: FastifyInstance, ctx: AdminContext): void 
       );
 
       const errorRow = group.error
-        ? html`<tr><td colspan="4"><div class="banner error">${group.error}</div></td></tr>`
+        ? html`<tr><td colspan="5"><div class="banner error">${group.error}</div></td></tr>`
         : null;
 
       return raw(html`${header}${rows}${errorRow}`);
@@ -115,29 +124,44 @@ export function registerProjects(app: FastifyInstance, ctx: AdminContext): void 
       : totalProjects === 0 && !hasErrors
         ? html`<p class="empty">No projects found in the selected groups.</p>`
         : raw(html`
-            <p class="hint">
-              ${totalProjects} projects${hasErrors ? raw(' <span class="chip error">Some groups failed to load</span>') : ''}
-              ${config.gitlab.include_subgroups ? raw(' <span class="chip">including subgroups</span>') : ''}
-            </p>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Path</th>
-                    <th>Status</th>
-                    <th class="num">Open MRs</th>
-                  </tr>
-                </thead>
-                <tbody>${projectTableHtml}</tbody>
-              </table>
-            </div>`);
+            <form method="post" action="/projects/save">
+              <p class="hint">
+                ${hasProjectOverride
+                  ? raw(html`<strong>Only checked projects are scanned.</strong> Uncheck all to scan everything in the selected groups.`)
+                  : raw(html`All ${totalProjects} projects are scanned. Check specific projects to switch to whitelist mode.`)}
+                ${hasErrors ? raw(' <span class="chip error">Some groups failed to load</span>') : ''}
+                ${config.gitlab.include_subgroups ? raw(' <span class="chip">including subgroups</span>') : ''}
+              </p>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th class="num">Scan</th>
+                      <th>Name</th>
+                      <th>Path</th>
+                      <th>Status</th>
+                      <th class="num">Open MRs</th>
+                    </tr>
+                  </thead>
+                  <tbody>${projectTableHtml}</tbody>
+                </table>
+              </div>
+              <div class="actions">
+                <button type="submit">Save project selection</button>
+                ${hasProjectOverride
+                  ? raw(html`<button type="submit" formaction="/projects/reset-projects" class="secondary" onclick="return confirm('Clear the project whitelist and scan all projects?')">Scan all projects</button>`)
+                  : ''}
+                ${ctx.provider.hasOverride('gitlab.groups')
+                  ? raw(html`<button type="submit" formaction="/projects/reset-groups" class="secondary" onclick="return confirm('Reset scan groups to config.yaml?')">Reset scan groups</button>`)
+                  : ''}
+              </div>
+            </form>`);
 
     const body = html`
       <div class="card">
         <h2>Scan groups</h2>
         <p class="hint">
-          Groups that ReviewNudge scans for merge requests.
+          Groups that ReviewNudge queries for merge requests.
           ${ctx.provider.hasOverride('gitlab.groups')
             ? raw(' <span class="chip warn">overridden from config.yaml</span>')
             : ''}
@@ -146,7 +170,7 @@ export function registerProjects(app: FastifyInstance, ctx: AdminContext): void 
       </div>
 
       <div class="card">
-        <h2>Projects in scan groups</h2>
+        <h2>Projects</h2>
         ${raw(projectsSection)}
       </div>
     `;
@@ -155,29 +179,42 @@ export function registerProjects(app: FastifyInstance, ctx: AdminContext): void 
   });
 
   app.post('/projects/save', async (request, reply) => {
-    const groups = formList((request.body as Record<string, unknown>).group);
-    const before = ctx.provider.resolve().gitlab.groups;
+    const body = request.body as Record<string, unknown>;
+    const groups = formList(body.group);
+    const projects = formList(body.project);
 
-    if (groups.length === 0) {
-      return redirectWith(reply, '/projects', { kind: 'error', message: 'At least one group must be selected.' });
+    if (groups.length > 0) {
+      const before = ctx.provider.resolve().gitlab.groups;
+      ctx.repo.setSetting('gitlab.groups', groups);
+      ctx.audit.record({
+        actor: 'admin',
+        sourceIp: sourceIp(request),
+        action: 'gitlab.groups.update',
+        before,
+        after: groups,
+      });
     }
 
-    ctx.repo.setSetting('gitlab.groups', groups);
-    ctx.audit.record({
-      actor: 'admin',
-      sourceIp: sourceIp(request),
-      action: 'gitlab.groups.update',
-      before,
-      after: groups,
-    });
+    if (projects.length > 0) {
+      const before = ctx.provider.resolve().gitlab.projects;
+      // If all projects in the page are checked, or projects was set already and now
+      // fewer are checked, save the explicit list. If they uncheck everything, we
+      // can't distinguish that from "no project checkboxes present" — but the hint
+      // text tells them to click "Scan all projects" instead.
+      ctx.repo.setSetting('gitlab.projects', projects);
+      ctx.audit.record({
+        actor: 'admin',
+        sourceIp: sourceIp(request),
+        action: 'gitlab.projects.update',
+        before,
+        after: projects,
+      });
+    }
 
-    return redirectWith(reply, '/projects', {
-      kind: 'ok',
-      message: `Scan groups updated to: ${groups.join(', ')}.`,
-    });
+    return redirectWith(reply, '/projects', { kind: 'ok', message: 'Settings saved.' });
   });
 
-  app.post('/projects/reset', async (request, reply) => {
+  app.post('/projects/reset-groups', async (request, reply) => {
     ctx.repo.deleteSetting('gitlab.groups');
     ctx.audit.record({
       actor: 'admin',
@@ -185,10 +222,17 @@ export function registerProjects(app: FastifyInstance, ctx: AdminContext): void 
       action: 'gitlab.groups.reset',
       target: 'gitlab.groups',
     });
+    return redirectWith(reply, '/projects', { kind: 'ok', message: 'Scan groups reset to config.yaml defaults.' });
+  });
 
-    return redirectWith(reply, '/projects', {
-      kind: 'ok',
-      message: 'Scan groups reset to config.yaml defaults.',
+  app.post('/projects/reset-projects', async (request, reply) => {
+    ctx.repo.deleteSetting('gitlab.projects');
+    ctx.audit.record({
+      actor: 'admin',
+      sourceIp: sourceIp(request),
+      action: 'gitlab.projects.reset',
+      target: 'gitlab.projects',
     });
+    return redirectWith(reply, '/projects', { kind: 'ok', message: 'Now scanning all projects in the selected groups.' });
   });
 }
