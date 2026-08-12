@@ -52,6 +52,7 @@ export interface NavItem {
 const NAV: NavItem[] = [
   { href: '/', label: 'Dashboard' },
   { href: '/pending', label: 'Pending' },
+  { href: '/projects', label: 'Projects' },
   { href: '/recipients', label: 'Recipients' },
   { href: '/exclusions', label: 'Exclusions' },
   { href: '/silence', label: 'Silence' },

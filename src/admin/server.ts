@@ -18,6 +18,7 @@ import { registerAudit } from './routes/audit.js';
 import { registerDashboard } from './routes/dashboard.js';
 import { registerExclusions } from './routes/exclusions.js';
 import { registerPending } from './routes/pending.js';
+import { registerProjects } from './routes/projects.js';
 import { registerRecipients } from './routes/recipients.js';
 import { registerSettings } from './routes/settings.js';
 import { registerSelfService } from './routes/selfservice.js';
@@ -92,6 +93,7 @@ export function buildAdminServer(ctx: AdminContext, options: AdminServerOptions)
 
   registerDashboard(app, ctx);
   registerPending(app, ctx);
+  registerProjects(app, ctx);
   registerRecipients(app, ctx);
   registerExclusions(app, ctx);
   registerSilence(app, ctx);

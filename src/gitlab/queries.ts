@@ -117,3 +117,36 @@ query CurrentUser {
   currentUser { username name }
   metadata { version revision }
 }`;
+
+/** Projects within a group, optionally including subgroups. */
+export function groupProjectsQuery(): string {
+  return `
+query GroupProjects(
+  $fullPath: ID!
+  $first: Int!
+  $after: String
+  $includeSubgroups: Boolean!
+) {
+  group(fullPath: $fullPath) {
+    id
+    fullPath
+    name
+    projects(
+      includeSubgroups: $includeSubgroups
+      first: $first
+      after: $after
+    ) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        id
+        fullPath
+        name
+        webUrl
+        archived
+        visibility
+        openMergeRequestsCount
+      }
+    }
+  }
+}`;
+}

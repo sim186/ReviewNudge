@@ -92,3 +92,22 @@ export interface EnrichedMergeRequest extends GqlMergeRequest {
   projectPath: string;
   discussions: { nodes: GqlDiscussion[] };
 }
+
+export interface GqlProject {
+  id: string;
+  fullPath: string;
+  name: string;
+  webUrl: string;
+  archived: boolean;
+  visibility: string;
+  openMergeRequestsCount: number;
+}
+
+export interface GroupProjectsResponse {
+  group: {
+    id: string;
+    fullPath: string;
+    name: string;
+    projects: { pageInfo: PageInfo; nodes: GqlProject[] };
+  } | null;
+}

@@ -4,14 +4,18 @@ import {
   FULL_CAPABILITIES,
   MERGE_REQUEST_DISCUSSIONS_QUERY,
   groupMergeRequestsQuery,
+  groupProjectsQuery,
   type Capabilities,
 } from './queries.js';
 import type {
   EnrichedMergeRequest,
   GqlDiscussion,
   GqlMergeRequest,
+  GqlProject,
   GroupMergeRequestsResponse,
+  GroupProjectsResponse,
   MergeRequestDiscussionsResponse,
+  PageInfo,
 } from './types.js';
 
 export class GitLabError extends Error {
@@ -241,6 +245,50 @@ export class GitLabClient {
 
     this.log.debug({ group: fullPath, count: collected.length }, 'fetched group merge requests');
     return collected;
+  }
+
+  /** All projects within a group and optionally its subgroups, following cursors. */
+  async fetchGroupProjects(
+    fullPath: string,
+    includeSubgroups: boolean,
+  ): Promise<{ groupPath: string; groupName: string; projects: GqlProject[] }> {
+    const collected: GqlProject[] = [];
+    let after: string | null = null;
+    let groupPath = '';
+    let groupName = '';
+
+    for (;;) {
+      const variables: Record<string, unknown> = {
+        fullPath,
+        first: this.pageSize,
+        after,
+        includeSubgroups,
+      };
+
+      const data: GroupProjectsResponse = await this.request<GroupProjectsResponse>(
+        groupProjectsQuery(),
+        variables,
+      );
+
+      if (!data.group) {
+        throw new GitLabError(
+          `group "${fullPath}" was not found, or the token cannot see it. Check gitlab.groups.`,
+        );
+      }
+
+      groupPath = data.group.fullPath;
+      groupName = data.group.name;
+      collected.push(...data.group.projects.nodes);
+      const page: PageInfo = data.group.projects.pageInfo;
+      if (!page.hasNextPage || !page.endCursor) break;
+      after = page.endCursor;
+    }
+
+    this.log.debug(
+      { group: fullPath, count: collected.length },
+      'fetched group projects',
+    );
+    return { groupPath, groupName, projects: collected };
   }
 
   /** Turns a capability-related GraphQL error into a reduced query. */
