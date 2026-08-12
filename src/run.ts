@@ -28,6 +28,8 @@ export interface RunOptions {
   notifierFactory?: (config: EffectiveConfig, dryRun: boolean) => Map<Channel, Notifier>;
   /** Signs the per-recipient links in a digest. Omit to leave the links out. */
   selfServiceSecret?: string;
+  /** Restrict the scan to these project full paths (e.g. "group/project"). */
+  projectFilter?: readonly string[];
 }
 
 export interface RunSummary {
@@ -165,7 +167,17 @@ export async function executeRun(
     }
 
     // A merge request visible through two groups must not be counted twice.
-    const unique = new Map(raw.map((mr) => [mr.id, mr]));
+    let unique = new Map(raw.map((mr) => [mr.id, mr]));
+
+    if (options.projectFilter && options.projectFilter.length > 0) {
+      const allowed = new Set(options.projectFilter);
+      unique = new Map(
+        [...unique.entries()].filter(([, mr]) =>
+          allowed.has(mr.project?.fullPath ?? ''),
+        ),
+      );
+      log.debug({ kept: unique.size, filter: options.projectFilter }, 'applied project filter');
+    }
 
     const filterOptions = {
       exclude: config.exclude,
@@ -209,6 +221,7 @@ export async function executeRun(
       maxItemsPerDigest: config.notifications.max_items_per_digest,
       timezone: config.schedule.timezone,
       now,
+      defaultDomain: config.default_recipient_domain ?? undefined,
     });
 
     repo.replaceSnapshot(runId, [

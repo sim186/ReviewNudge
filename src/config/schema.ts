@@ -132,6 +132,13 @@ export const recipientSchema = z.object({
 });
 export type RecipientConfig = z.infer<typeof recipientSchema>;
 
+const domainSchema = z
+  .string()
+  .regex(
+    /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/,
+    'must be a domain such as "example.com"',
+  );
+
 export const configSchema = z
   .object({
     gitlab: gitlabSchema,
@@ -146,6 +153,8 @@ export const configSchema = z
     slack: slackSchema.optional(),
     telegram: telegramSchema.optional(),
     recipients: z.array(recipientSchema).default([]),
+    /** When a GitLab username has no explicit recipient entry, derive the email as `{username}@{domain}`. */
+    default_recipient_domain: domainSchema.optional(),
     retention: z
       .object({
         audit_days: z.number().int().positive().default(180),

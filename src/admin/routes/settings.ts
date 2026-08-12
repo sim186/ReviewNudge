@@ -2,8 +2,10 @@ import { Cron } from 'croner';
 import type { FastifyInstance } from 'fastify';
 import { DateTime } from 'luxon';
 import { SETTING_SCHEMAS, isSettingKey, type SettingKey } from '../../config/effective.js';
+import { CHANNELS, type Channel } from '../../config/schema.js';
+import { isChannelConfigured } from '../../notify/factory.js';
 import { databasePath } from '../../db/migrate.js';
-import { type AdminContext, formValue, redirectWith, render, sourceIp } from '../context.js';
+import { type AdminContext, formList, formValue, redirectWith, render, sourceIp } from '../context.js';
 import { html, raw } from '../views/layout.js';
 
 const RULE_LABELS: Record<string, string> = {
@@ -100,6 +102,41 @@ export function registerSettings(app: FastifyInstance, ctx: AdminContext): void 
       </div>
 
       <div class="card">
+        <h2>Channels</h2>
+        <p class="hint">
+          Only channels configured in config.yaml can be enabled. A channel stays off until it is
+          both configured and checked here.
+        </p>
+        <form method="post" action="/settings/channels">
+          <fieldset>
+            <legend>Active channels ${raw(overridden('notifications.channels'))}</legend>
+            <div class="checks">
+              ${raw(
+                CHANNELS.map((channel) => {
+                  const configured = isChannelConfigured(config, channel);
+                  const active = config.notifications.channels.includes(channel);
+                  return html`<label>
+                    <input
+                      type="checkbox"
+                      name="channels"
+                      value="${channel}"
+                      ${configured ? '' : 'disabled'}
+                      ${active ? 'checked' : ''}
+                    />
+                    ${channel}
+                    ${configured
+                      ? ''
+                      : html`<span class="chip">not configured</span>`}
+                  </label>`;
+                }).join(''),
+              )}
+            </div>
+          </fieldset>
+          <button type="submit">Save</button>
+        </form>
+      </div>
+
+      <div class="card">
         <h2>From config.yaml</h2>
         <p class="hint">
           Infrastructure and secrets live in the config file and are never editable here. Change
@@ -111,11 +148,12 @@ export function registerSettings(app: FastifyInstance, ctx: AdminContext): void 
               <tr><td>GitLab URL</td><td><code>${file.gitlab.url}</code></td></tr>
               <tr><td>GitLab token</td><td><code>${redact(file.gitlab.token)}</code></td></tr>
               <tr><td>Groups</td><td><code>${file.gitlab.groups.join(', ')}</code></td></tr>
-              <tr><td>Channels</td><td><code>${config.notifications.channels.join(', ') || 'none'}</code></td></tr>
+              <tr><td>Channels</td><td><code>${file.notifications.channels.join(', ') || 'none'}</code></td></tr>
               <tr><td>SMTP host</td><td><code>${file.email?.smtp.host ?? 'not configured'}</code></td></tr>
               <tr><td>SMTP password</td><td><code>${redact(file.email?.smtp.pass)}</code></td></tr>
               <tr><td>Mail from</td><td><code>${file.email?.from ?? 'not configured'}</code></td></tr>
               <tr><td>Teams workflow URL</td><td><code>${redact(file.teams?.workflow_url)}</code></td></tr>
+              <tr><td>Telegram bot token</td><td><code>${redact(file.telegram?.bot_token)}</code></td></tr>
               <tr><td>Database</td><td><code>${databasePath()}</code></td></tr>
             </tbody>
           </table>
@@ -220,6 +258,42 @@ export function registerSettings(app: FastifyInstance, ctx: AdminContext): void 
     });
 
     return redirectWith(reply, '/settings', { kind: 'ok', message: 'Rules saved.' });
+  });
+
+  app.post('/settings/channels', async (request, reply) => {
+    const body = request.body as Record<string, unknown>;
+    const selected = formList(body.channels);
+    const before = ctx.provider.resolve().notifications.channels;
+
+    const parsed = SETTING_SCHEMAS['notifications.channels'].safeParse(selected);
+    if (!parsed.success) {
+      return redirectWith(reply, '/settings', {
+        kind: 'error',
+        message: `channels: ${parsed.error.issues[0]!.message}`,
+      });
+    }
+
+    const configured = CHANNELS.filter((c) => isChannelConfigured(ctx.provider.resolve(), c));
+    const invalid = parsed.data.filter((c: Channel) => !configured.includes(c));
+    if (invalid.length > 0) {
+      return redirectWith(reply, '/settings', {
+        kind: 'error',
+        message: `channels not configured in config.yaml: ${invalid.join(', ')}`,
+      });
+    }
+
+    ctx.repo.setSetting('notifications.channels', parsed.data);
+
+    ctx.audit.record({
+      actor: 'admin',
+      sourceIp: sourceIp(request),
+      action: 'setting.channels',
+      target: 'notifications.channels',
+      before: { channels: before },
+      after: { channels: parsed.data },
+    });
+
+    return redirectWith(reply, '/settings', { kind: 'ok', message: 'Channels saved.' });
   });
 
   app.post('/settings/reset', async (request, reply) => {

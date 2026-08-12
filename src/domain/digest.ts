@@ -39,6 +39,8 @@ export interface BuildDigestOptions {
   now: Date;
   /** Channels that are actually configured; a recipient asking for others is trimmed. */
   availableChannels: Channel[];
+  /** When a GitLab username has no explicit recipient entry, derive the email as `{username}@{domain}`. */
+  defaultDomain?: string;
 }
 
 export interface DigestResult {
@@ -111,7 +113,20 @@ export function buildDigests(reasons: Reason[], options: BuildDigestOptions): Di
       // Longest-waiting first: the top of the message is the most overdue thing.
       .sort((a, b) => Date.parse(a.waitingSince) - Date.parse(b.waitingSince));
 
-    const recipient = byUsername.get(username);
+    let recipient = byUsername.get(username);
+    if (!recipient && options.defaultDomain) {
+      const derivedAddress = `${username}@${options.defaultDomain}`;
+      recipient = {
+        gitlab_username: username,
+        email: derivedAddress,
+        teams_upn: derivedAddress,
+        slack_id: null,
+        telegram_chat_id: null,
+        channels: null,
+        snooze_until: null,
+        enabled: true,
+      };
+    }
     if (!recipient) {
       undeliverable.push({ username, itemCount: items.length, reason: 'no recipient mapping', items });
       continue;

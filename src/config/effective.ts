@@ -42,6 +42,7 @@ export interface EffectiveConfig {
   };
   notifications: NotificationSettings;
   recipients: RecipientRow[];
+  default_recipient_domain: string | null;
 }
 
 /**
@@ -241,6 +242,7 @@ export class ConfigProvider {
         skip_empty: this.override('notifications.skip_empty', f.notifications.skip_empty),
       },
       recipients: this.recipients(),
+      default_recipient_domain: f.default_recipient_domain ?? null,
     };
   }
 }

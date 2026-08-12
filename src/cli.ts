@@ -12,14 +12,16 @@ import { Scheduler } from './scheduler.js';
 import { executeRun } from './run.js';
 import type { Digest } from './domain/digest.js';
 
+type FlagValue = string | true | string[];
+
 interface Args {
   command: string;
-  flags: Map<string, string | true>;
+  flags: Map<string, FlagValue>;
 }
 
 function parseArgs(argv: string[]): Args {
   const [command = 'help', ...rest] = argv;
-  const flags = new Map<string, string | true>();
+  const flags = new Map<string, FlagValue>();
 
   for (let i = 0; i < rest.length; i++) {
     const token = rest[i]!;
@@ -27,7 +29,14 @@ function parseArgs(argv: string[]): Args {
     const name = token.replace(/^-+/, '');
     const next = rest[i + 1];
     if (next && !next.startsWith('-')) {
-      flags.set(name, next);
+      const existing = flags.get(name);
+      if (typeof existing === 'string') {
+        flags.set(name, [existing, next]);
+      } else if (Array.isArray(existing)) {
+        existing.push(next);
+      } else {
+        flags.set(name, next);
+      }
       i++;
     } else {
       flags.set(name, true);
@@ -45,6 +54,7 @@ function flagString(args: Args, ...names: string[]): string | undefined {
   for (const name of names) {
     const value = args.flags.get(name);
     if (typeof value === 'string') return value;
+    if (Array.isArray(value) && value.length > 0) return value[value.length - 1];
   }
   return undefined;
 }
@@ -53,11 +63,23 @@ function flagBool(args: Args, ...names: string[]): boolean {
   return names.some((name) => args.flags.has(name));
 }
 
+function flagStrings(args: Args, ...names: string[]): string[] {
+  const values: string[] = [];
+  for (const name of names) {
+    const value = args.flags.get(name);
+    if (typeof value === 'string') values.push(value);
+    else if (Array.isArray(value)) values.push(...value);
+  }
+  return values;
+}
+
 const USAGE = `ReviewNudge — tells people which merge requests are waiting on them.
 
 Usage:
   nudge serve                     Run the scheduler and the admin panel
-  nudge run [--once] [--dry-run]  Run one cycle now (--once is the default)
+  nudge run [--once] [--dry-run] [--project <path>]
+                                  Run one cycle now (--once is the default).
+                                  --project can be repeated to limit the scan.
   nudge check-config [--remote]   Validate the config file; --remote also tests GitLab
   nudge test-notify --recipient U Send one sample digest to a recipient
   nudge help
@@ -66,6 +88,7 @@ Options:
   -c, --config <path>   Config file (default: config/config.yaml, or $NUDGE_CONFIG)
       --dry-run         Render digests to stdout instead of delivering them
       --remote          Contact GitLab as part of check-config
+      --project <path>  Full project path to include (repeatable); e.g. group/project
       --recipient <u>   GitLab username to send the sample to
 
 Environment:
@@ -125,6 +148,7 @@ async function commandCheckConfig(args: Args): Promise<number> {
 async function commandRun(args: Args): Promise<number> {
   const app = createApp(flagString(args, 'c', 'config'));
   const dryRun = flagBool(args, 'dry-run') || readEnvFlag('DRY_RUN');
+  const projectFilter = flagStrings(args, 'project');
 
   try {
     const summary = await executeRun(app.provider, app.repo, app.audit, {
@@ -132,6 +156,7 @@ async function commandRun(args: Args): Promise<number> {
       dryRun,
       logger,
       selfServiceSecret: resolveSecret(app.provider.resolve()),
+      projectFilter: projectFilter.length > 0 ? projectFilter : undefined,
     });
 
     for (const group of summary.undeliverable) {
@@ -159,7 +184,21 @@ async function commandTestNotify(args: Args): Promise<number> {
 
   const app = createApp(flagString(args, 'c', 'config'));
   const config = app.provider.resolve();
-  const recipient = config.recipients.find((r) => r.gitlab_username === username);
+  let recipient = config.recipients.find((r) => r.gitlab_username === username);
+
+  if (!recipient && config.default_recipient_domain) {
+    const derivedAddress = `${username}@${config.default_recipient_domain}`;
+    recipient = {
+      gitlab_username: username,
+      email: derivedAddress,
+      teams_upn: derivedAddress,
+      slack_id: null,
+      telegram_chat_id: null,
+      channels: null,
+      snooze_until: null,
+      enabled: true,
+    };
+  }
 
   if (!recipient) {
     logger.error({ username }, 'no such recipient; add them in the admin panel or config.yaml');
