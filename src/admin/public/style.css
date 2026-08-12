@@ -375,3 +375,68 @@ legend {
 .checks input {
   padding: 0;
 }
+
+/* ── accordion ────────────────────────────────── */
+
+details.accordion {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+}
+
+details.accordion summary {
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  border-radius: var(--radius);
+}
+
+details.accordion[open] summary {
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: var(--surface);
+}
+
+details.accordion summary::marker {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+details.accordion summary .accordion-label {
+  font-weight: 600;
+  flex: 1;
+  min-width: 100px;
+}
+
+details.accordion summary .accordion-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+details.accordion .accordion-body {
+  padding: 0 14px 12px;
+}
+
+/* compact table inside accordion, no outer table-wrap border */
+details.accordion .table-wrap {
+  margin: 0;
+  border: none;
+}
+
+details.accordion .group-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0;
+}
+
+details.accordion .group-actions button {
+  font-size: 12px;
+  padding: 2px 8px;
+}

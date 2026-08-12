@@ -82,14 +82,8 @@ export function registerProjects(app: FastifyInstance, ctx: AdminContext): void 
       }
     }
 
-    const projectTableHtml = projectGroups.map((group) => {
-      const header = group.projects.length > 0
-        ? html`<tr class="group-header"><td colspan="5">
-              <strong>${group.groupName}</strong>
-              <span class="chip">${group.groupPath}</span>
-              <span class="chip">${group.projects.length} projects</span>
-            </td></tr>`
-        : null;
+    const accordionHtml = projectGroups.map((group, gi) => {
+      const groupId = `group-${gi}`;
 
       const rows = group.projects.map(
         (p) => html`<tr class="${p.archived ? 'muted' : ''}">
@@ -98,8 +92,8 @@ export function registerProjects(app: FastifyInstance, ctx: AdminContext): void 
               type="checkbox"
               name="project"
               value="${p.fullPath}"
+              class="group-cb-${groupId}"
               ${hasProjectOverride ? (scanProjects.has(p.fullPath) ? 'checked' : '') : 'checked'}
-              ${hasProjectOverride ? '' : 'disabled'}
             />
           </td>
           <td>${p.name}</td>
@@ -112,47 +106,67 @@ export function registerProjects(app: FastifyInstance, ctx: AdminContext): void 
         </tr>`,
       );
 
-      const errorRow = group.error
-        ? html`<tr><td colspan="5"><div class="banner error">${group.error}</div></td></tr>`
+      const errorBanner = group.error
+        ? html`<div class="banner error">${group.error}</div>`
         : null;
 
-      return raw(html`${header}${rows}${errorRow}`);
+      const modeText = hasProjectOverride
+        ? 'Whitelist active — only checked projects are scanned'
+        : 'All projects scanned';
+
+      return raw(html`
+        <details class="accordion"${group.projects.length > 0 ? '' : ' open'}>
+          <summary>
+            <span class="accordion-label">${group.groupName}</span>
+            <span class="chip">${group.groupPath}</span>
+            <span class="accordion-meta">${group.projects.length} project${group.projects.length !== 1 ? 's' : ''}</span>
+            <span class="accordion-meta">&mdash; ${modeText}</span>
+          </summary>
+          <div class="accordion-body">
+            ${raw(errorBanner ?? '')}
+            ${group.projects.length > 0
+              ? raw(html`
+                  <div class="group-actions">
+                    <button type="button" onclick="document.querySelectorAll('.group-cb-${groupId}').forEach(c=>c.checked=true)">Select all</button>
+                    <button type="button" onclick="document.querySelectorAll('.group-cb-${groupId}').forEach(c=>c.checked=false)">Deselect all</button>
+                  </div>
+                  <div class="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th class="num">Scan</th>
+                          <th>Name</th>
+                          <th>Path</th>
+                          <th>Status</th>
+                          <th class="num">Open MRs</th>
+                        </tr>
+                      </thead>
+                      <tbody>${rows}</tbody>
+                    </table>
+                  </div>`)
+              : raw(group.error ? '' : html`<p class="empty">No projects in this group.</p>`)}
+          </div>
+        </details>`);
     });
 
     const projectsSection = scanGroups.size === 0
-      ? html`<p class="empty">No scan groups selected.</p>`
+      ? html`<p class="empty">No scan groups selected above.</p>`
       : totalProjects === 0 && !hasErrors
         ? html`<p class="empty">No projects found in the selected groups.</p>`
         : raw(html`
             <form method="post" action="/projects/save">
               <p class="hint">
                 ${hasProjectOverride
-                  ? raw(html`<strong>Only checked projects are scanned.</strong> Uncheck all to scan everything in the selected groups.`)
-                  : raw(html`All ${totalProjects} projects are scanned. Check specific projects to switch to whitelist mode.`)}
-                ${hasErrors ? raw(' <span class="chip error">Some groups failed to load</span>') : ''}
+                  ? raw('<strong>Whitelist mode</strong> &mdash; only checked projects are scanned. Expand each group to pick projects.')
+                  : raw('All projects scanned by default. Check individual projects inside each group to switch to whitelist mode.')}
+                ${hasErrors ? raw(' <span class="chip error">Some groups failed</span>') : ''}
                 ${config.gitlab.include_subgroups ? raw(' <span class="chip">including subgroups</span>') : ''}
               </p>
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th class="num">Scan</th>
-                      <th>Name</th>
-                      <th>Path</th>
-                      <th>Status</th>
-                      <th class="num">Open MRs</th>
-                    </tr>
-                  </thead>
-                  <tbody>${projectTableHtml}</tbody>
-                </table>
-              </div>
-              <div class="actions">
+              ${accordionHtml}
+              <div class="actions" style="margin-top:12px">
                 <button type="submit">Save project selection</button>
                 ${hasProjectOverride
-                  ? raw(html`<button type="submit" formaction="/projects/reset-projects" class="secondary" onclick="return confirm('Clear the project whitelist and scan all projects?')">Scan all projects</button>`)
-                  : ''}
-                ${ctx.provider.hasOverride('gitlab.groups')
-                  ? raw(html`<button type="submit" formaction="/projects/reset-groups" class="secondary" onclick="return confirm('Reset scan groups to config.yaml?')">Reset scan groups</button>`)
+                  ? raw(html`<button type="submit" formaction="/projects/reset-projects" class="secondary" onclick="return confirm('Clear the whitelist and scan all projects?')">Scan all projects</button>`)
                   : ''}
               </div>
             </form>`);
@@ -170,7 +184,7 @@ export function registerProjects(app: FastifyInstance, ctx: AdminContext): void 
       </div>
 
       <div class="card">
-        <h2>Projects</h2>
+        <h2>Projects in scan groups</h2>
         ${raw(projectsSection)}
       </div>
     `;
@@ -197,10 +211,6 @@ export function registerProjects(app: FastifyInstance, ctx: AdminContext): void 
 
     if (projects.length > 0) {
       const before = ctx.provider.resolve().gitlab.projects;
-      // If all projects in the page are checked, or projects was set already and now
-      // fewer are checked, save the explicit list. If they uncheck everything, we
-      // can't distinguish that from "no project checkboxes present" — but the hint
-      // text tells them to click "Scan all projects" instead.
       ctx.repo.setSetting('gitlab.projects', projects);
       ctx.audit.record({
         actor: 'admin',
