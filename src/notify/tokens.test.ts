@@ -66,6 +66,17 @@ describe('selfServiceBaseUrl', () => {
     }
   });
 
+  it('uses the public URL when the panel is behind a reverse proxy', () => {
+    expect(
+      selfServiceBaseUrl({
+        enabled: true,
+        host: '0.0.0.0',
+        port: 8080,
+        public_url: 'https://dev-server.intern:8449/',
+      }),
+    ).toBe('https://dev-server.intern:8449');
+  });
+
   it('returns null when the panel is switched off', () => {
     expect(selfServiceBaseUrl({ enabled: false, host: 'nudge.example.com', port: 8080 })).toBeNull();
   });

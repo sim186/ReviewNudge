@@ -28,6 +28,9 @@ admin:
   # NUDGE_ADMIN_HOST=0.0.0.0 and publish the port to 127.0.0.1 on the host instead.
   host: ${NUDGE_ADMIN_HOST:-127.0.0.1}
   port: 8080
+  # Public URL used in recipient emails when the panel is behind a reverse proxy.
+  # Leave unset when the panel is not reachable by recipients.
+  public_url: https://nudge.example.com
   password: ${NUDGE_ADMIN_PASSWORD}
   session_secret: ${NUDGE_SESSION_SECRET:-} # random per start if left empty
   session_ttl_hours: 12

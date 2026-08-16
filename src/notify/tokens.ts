@@ -52,8 +52,10 @@ export function selfServiceBaseUrl(admin: {
   enabled: boolean;
   host: string;
   port: number;
+  public_url?: string;
 }): string | null {
   if (!admin.enabled) return null;
+  if (admin.public_url) return admin.public_url.replace(/\/$/, '');
   if (!isReachableHost(admin.host)) return null;
   return `http://${admin.host}:${admin.port}`;
 }
