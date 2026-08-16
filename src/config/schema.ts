@@ -57,6 +57,21 @@ export const rulesSchema = z.object({
   require_activity_since_push: z.boolean().default(true),
   min_age_hours: z.number().min(0).default(12),
   ignore_draft: z.boolean().default(true),
+
+  /** Warn when a non-draft merge request has no reviewer anyone could be waiting on. */
+  warn_missing_reviewer: z.boolean().default(true),
+  /**
+   * Warn when neither the title nor the description mentions an issue key. Off by
+   * default: plenty of teams have no tracker to reference.
+   */
+  warn_missing_ticket: z.boolean().default(false),
+  /** Matched case-insensitively against the title and the description. */
+  ticket_pattern: z.string().min(1).default('[A-Z][A-Z0-9]+-\\d+'),
+  /**
+   * When a merge request produces no reasons for anyone, send its warnings to the
+   * author. Without this an unattended merge request appears in nobody's digest.
+   */
+  notify_author_of_warnings: z.boolean().default(true),
 });
 
 export const excludeSchema = z.object({
@@ -134,6 +149,19 @@ export const recipientSchema = z.object({
 });
 export type RecipientConfig = z.infer<typeof recipientSchema>;
 
+/**
+ * Whether a string compiles as a regular expression. Used to reject a bad
+ * `ticket_pattern` at load time rather than silently matching nothing on every run.
+ */
+export function isValidPattern(pattern: string): boolean {
+  try {
+    new RegExp(pattern);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const domainSchema = z
   .string()
   .regex(
@@ -175,6 +203,13 @@ export const configSchema = z
           message: `notifications.channels includes "${channel}" but the ${channel} section is missing`,
         });
       }
+    }
+    if (!isValidPattern(cfg.rules.ticket_pattern)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['rules', 'ticket_pattern'],
+        message: `"${cfg.rules.ticket_pattern}" is not a valid regular expression`,
+      });
     }
     if (cfg.admin.enabled && cfg.admin.password.length < 8) {
       ctx.addIssue({

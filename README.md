@@ -20,6 +20,7 @@ you and for how long.
 ## Contents
 
 - [How it decides who is blocking](#how-it-decides-who-is-blocking)
+- [Warnings](#warnings)
 - [Quick start](#quick-start)
 - [Token permissions](#token-permissions)
 - [Docker](#docker)
@@ -58,6 +59,57 @@ Two deliberate refinements:
 Merge requests younger than `min_age_hours` are ignored, so nothing fires minutes after an
 MR is opened. Several reasons against the same merge request collapse into one row, and
 each row shows how long it has been waiting.
+
+## Warnings
+
+The three rules above answer "who is blocking this?". Warnings answer a different
+question — "is this merge request set up properly?" — and they are about the merge
+request, not about a person.
+
+| Warning | Raised when | Default |
+| --- | --- | --- |
+| **No reviewer** | The merge request is not a draft and has no reviewer anyone could be waiting on | on |
+| **No issue key** | Neither the title nor the description matches `ticket_pattern` | off |
+
+Because a warning is not a demand on the reader, it does **not** produce a message of its
+own. It renders as a small box on the rows people already receive, so a reviewer who is
+being chased about an MR also learns that it has no ticket — without a second email
+arriving to say so.
+
+**Bots do not count as reviewers.** A merge request whose only reviewer is a service
+account still reads as unattended, which is usually what you want.
+
+**Drafts are never warned about.** An unfinished merge request is expected to have no
+reviewer and no ticket yet, and saying so every morning is exactly the noise this tool
+exists to remove.
+
+### The unattended merge request
+
+There is one case the three rules cannot see. An open merge request with no reviewer, no
+assignee, no unresolved threads and no approvals produces no reasons for anybody, so it
+appears in nobody's digest and sits there indefinitely.
+
+`notify_author_of_warnings` (on by default) closes that hole: when a merge request
+produces **no reasons at all**, its warnings go to the author. When somebody *is* on the
+hook, their row already carries the warnings and the author is left alone — so this never
+turns into a second notification about the same merge request.
+
+```yaml
+rules:
+  warn_missing_reviewer: true
+  warn_missing_ticket: false
+  ticket_pattern: '[A-Z][A-Z0-9]+-\d+'   # case-insensitive; matches PROJ-1234
+  notify_author_of_warnings: true
+```
+
+`ticket_pattern` is an ordinary regular expression, so it is not Jira-specific — `#\d+`
+matches GitHub-style issue references, and anything else you use will have a pattern too.
+A pattern that does not compile is rejected when `config.yaml` loads and when the panel
+saves it; one that somehow reaches a run anyway disables the check rather than failing it.
+
+> Switching `warn_missing_ticket` on makes each scan fetch merge request **descriptions**,
+> which are by far the largest field on the query. Nothing else reads them, so they are
+> left out entirely while the check is off.
 
 ## Quick start
 
@@ -282,7 +334,7 @@ in front, or set `NUDGE_ADMIN_HOST`.
 | **Exclusions** | Add or remove project globs, users, labels, and muted merge requests. Entries from `config.yaml` are shown but can only be changed there |
 | **Silence** | Quiet hours, working days, holidays, and the precedence order |
 | **Audit** | Every configuration change and delivery attempt, append-only, filterable by actor, action, and date |
-| **Settings** | Schedule, rule toggles, thresholds; `config.yaml` values shown read-only and redacted |
+| **Settings** | Schedule, rule toggles, thresholds, warning checks and the issue key pattern; `config.yaml` values shown read-only and redacted |
 
 Every mutating action follows the same path — validate, write, record an audit row,
 redirect — so no configuration change escapes the audit log, and each row carries the

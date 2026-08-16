@@ -60,8 +60,13 @@ function buildMr(overrides: Partial<EnrichedMergeRequest> = {}): EnrichedMergeRe
   };
 }
 
+/**
+ * The author fallback is off by default here so these tests stay about the three
+ * blocking rules. Most fixtures have no reviewer, which would otherwise hand every
+ * one of them an extra MR_WARNING row. warnings.test.ts covers it instead.
+ */
 const options = (rules: Partial<ReturnType<typeof rulesSchema.parse>> = {}) => ({
-  rules: rulesSchema.parse(rules),
+  rules: rulesSchema.parse({ notify_author_of_warnings: false, ...rules }),
   userFilter: { excludedUsers: [], excludeBots: true },
 });
 
@@ -198,7 +203,7 @@ describe('rule 1: reviewer has not approved', () => {
         ],
       },
     });
-    const opts = { rules: rulesSchema.parse({}), userFilter: { excludedUsers: ['ignored'], excludeBots: true } };
+    const opts = { ...options(), userFilter: { excludedUsers: ['ignored'], excludeBots: true } };
     expect(kinds(mr, opts)).toEqual([]);
   });
 

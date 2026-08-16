@@ -8,6 +8,7 @@ const KIND_LABEL: Record<string, string> = {
   REVIEW_REQUESTED: 'Review',
   ASSIGNEE_ACTION: 'Assignee',
   UNRESOLVED_THREAD: 'Thread',
+  MR_WARNING: 'Unattended',
 };
 
 function waitingDays(iso: string, now: Date): number {

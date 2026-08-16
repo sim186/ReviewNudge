@@ -224,6 +224,11 @@ async function commandTestNotify(args: Args): Promise<number> {
           lastPushAt: now.toISOString(),
           labels: [],
           notesCount: 0,
+          // Carried in the sample so a test message also proves the warning box
+          // survives the channel being tested.
+          warnings: [
+            { kind: 'NO_REVIEWER', detail: 'No reviewer is assigned, so nobody has been asked to look at this' },
+          ],
         },
         kinds: ['REVIEW_REQUESTED'],
         waitingSince: new Date(now.getTime() - 4 * 86_400_000).toISOString(),

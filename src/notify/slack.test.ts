@@ -21,6 +21,7 @@ function digest(slackId: string | null = 'U012ABCDEF'): Digest {
     lastPushAt: '2026-08-05T00:00:00Z',
     labels: [],
     notesCount: 0,
+    warnings: [],
   };
   return {
     username: 'alice',

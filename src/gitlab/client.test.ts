@@ -174,6 +174,22 @@ describe('GitLabClient', () => {
     const body = JSON.parse((fetchImpl.mock.calls[0] as [string, RequestInit])[1].body as string);
     expect(body.variables.first).toBe(100);
   });
+
+  it('leaves descriptions out of the query unless a rule needs them', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(groupPage([])));
+    await client(fetchImpl as unknown as typeof fetch).fetchGroupMergeRequests('eng', true);
+    const body = JSON.parse((fetchImpl.mock.calls[0] as [string, RequestInit])[1].body as string);
+    expect(body.query).not.toMatch(/^\s*description$/m);
+  });
+
+  it('asks for descriptions when told to', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(groupPage([])));
+    await client(fetchImpl as unknown as typeof fetch, {
+      includeDescription: true,
+    }).fetchGroupMergeRequests('eng', true);
+    const body = JSON.parse((fetchImpl.mock.calls[0] as [string, RequestInit])[1].body as string);
+    expect(body.query).toMatch(/^\s*description$/m);
+  });
 });
 
 describe('GitLabClient.enrich', () => {

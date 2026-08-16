@@ -156,6 +156,9 @@ export async function executeRun(
       timeoutMs: config.gitlab.timeout_ms,
       pageSize: config.gitlab.page_size,
       maxRetries: config.gitlab.max_retries,
+      // Only the missing-ticket warning reads descriptions, and they are the most
+      // expensive field on the query.
+      includeDescription: config.rules.warn_missing_ticket,
       logger: log,
     });
 

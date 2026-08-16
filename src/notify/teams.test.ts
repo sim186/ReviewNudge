@@ -16,6 +16,7 @@ function digest(teamsUpn: string | null = 'alice@example.com'): Digest {
     updatedAt: '2026-08-05T00:00:00Z',
     lastPushAt: '2026-08-05T00:00:00Z',
     labels: [],
+    warnings: [],
   };
   return {
     username: 'alice',

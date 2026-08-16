@@ -1,12 +1,14 @@
 import { logger as rootLogger, type Logger } from '../logger.js';
 import {
   CURRENT_USER_QUERY,
+  DEFAULT_QUERY_OPTIONS,
   FULL_CAPABILITIES,
   MERGE_REQUEST_DISCUSSIONS_QUERY,
   ACCESSIBLE_GROUPS_QUERY,
   groupMergeRequestsQuery,
   groupProjectsQuery,
   type Capabilities,
+  type QueryOptions,
 } from './queries.js';
 import type {
   AccessibleGroupsResponse,
@@ -51,6 +53,8 @@ export interface GitLabClientOptions {
   maxRetries?: number;
   /** Notes fetched per merge request for the activity-since-push comparison. */
   notesPerMr?: number;
+  /** Ask for the merge request description, which only the ticket warning reads. */
+  includeDescription?: boolean;
   logger?: Logger;
   fetchImpl?: typeof fetch;
 }
@@ -96,6 +100,7 @@ export class GitLabClient {
   private readonly doFetch: typeof fetch;
 
   private capabilities: Capabilities = { ...FULL_CAPABILITIES };
+  private readonly queryOptions: QueryOptions;
 
   constructor(private readonly options: GitLabClientOptions) {
     this.endpoint = new URL('/api/graphql', options.url).toString();
@@ -103,6 +108,9 @@ export class GitLabClient {
     this.pageSize = Math.min(options.pageSize ?? 50, 100);
     this.maxRetries = options.maxRetries ?? 4;
     this.notesPerMr = options.notesPerMr ?? 30;
+    this.queryOptions = {
+      includeDescription: options.includeDescription ?? DEFAULT_QUERY_OPTIONS.includeDescription,
+    };
     this.log = options.logger ?? rootLogger;
     this.doFetch = options.fetchImpl ?? fetch;
   }
@@ -224,7 +232,7 @@ export class GitLabClient {
       let data: GroupMergeRequestsResponse;
       try {
         data = await this.request<GroupMergeRequestsResponse>(
-          groupMergeRequestsQuery(this.capabilities),
+          groupMergeRequestsQuery(this.capabilities, this.queryOptions),
           variables,
         );
       } catch (err) {

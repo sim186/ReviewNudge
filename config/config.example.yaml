@@ -46,6 +46,16 @@ rules:
   min_age_hours: 12 # ignore merge requests younger than this
   ignore_draft: true
 
+  # Warnings describe the merge request rather than a person. They render as a box on
+  # rows people already receive, so they add no extra messages. Drafts are never warned
+  # about.
+  warn_missing_reviewer: true # non-draft merge request with no reviewer assigned
+  warn_missing_ticket: false # no issue key in the title or the description
+  ticket_pattern: '[A-Z][A-Z0-9]+-\d+' # case-insensitive; matches Jira-style PROJ-1234
+  # A merge request nobody is waiting on appears in nobody's digest. This sends its
+  # warnings to the author so it does not sit unnoticed forever.
+  notify_author_of_warnings: true
+
 # Defaults for exclusions. The panel adds to these; it never edits this file.
 exclude:
   projects: # glob patterns matched against the full project path

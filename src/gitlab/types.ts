@@ -46,6 +46,8 @@ export interface GqlMergeRequest {
   id: string;
   iid: string;
   title: string;
+  /** Only selected when a rule needs it; see QueryOptions.includeDescription. */
+  description?: string | null;
   webUrl: string;
   draft: boolean;
   createdAt: string;

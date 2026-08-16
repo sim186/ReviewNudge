@@ -4,6 +4,7 @@ import type { Repo, ExclusionKind, RecipientRow } from '../db/repo.js';
 import {
   channelSchema,
   excludeSchema,
+  isValidPattern,
   rulesSchema,
   silenceSchema,
   weekdaySchema,
@@ -60,6 +61,14 @@ export const SETTING_SCHEMAS = {
   'rules.require_activity_since_push': z.boolean(),
   'rules.min_age_hours': z.number().min(0),
   'rules.ignore_draft': z.boolean(),
+  'rules.warn_missing_reviewer': z.boolean(),
+  'rules.warn_missing_ticket': z.boolean(),
+  // A pattern that no longer compiles falls back to the config.yaml value rather than
+  // throwing, so a bad save in the panel cannot break every scheduled run after it.
+  'rules.ticket_pattern': z.string().min(1).refine(isValidPattern, {
+    message: 'must be a valid regular expression',
+  }),
+  'rules.notify_author_of_warnings': z.boolean(),
   'exclude.bots': z.boolean(),
   'silence.enabled': z.boolean(),
   'silence.quiet_hours': silenceSchema.shape.quiet_hours,
@@ -222,6 +231,16 @@ export class ConfigProvider {
         ),
         min_age_hours: this.override('rules.min_age_hours', f.rules.min_age_hours),
         ignore_draft: this.override('rules.ignore_draft', f.rules.ignore_draft),
+        warn_missing_reviewer: this.override(
+          'rules.warn_missing_reviewer',
+          f.rules.warn_missing_reviewer,
+        ),
+        warn_missing_ticket: this.override('rules.warn_missing_ticket', f.rules.warn_missing_ticket),
+        ticket_pattern: this.override('rules.ticket_pattern', f.rules.ticket_pattern),
+        notify_author_of_warnings: this.override(
+          'rules.notify_author_of_warnings',
+          f.rules.notify_author_of_warnings,
+        ),
       }),
       exclude: excludeSchema.parse({
         projects: this.mergedExclusions('project'),

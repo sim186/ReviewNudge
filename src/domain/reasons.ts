@@ -7,8 +7,14 @@ import type {
   ReviewState,
 } from '../gitlab/types.js';
 import { isExcludedUser, type UserFilterOptions } from './filters.js';
+import { authorShouldHear, evaluateWarnings, type Warning } from './warnings.js';
 
-export type ReasonKind = 'REVIEW_REQUESTED' | 'ASSIGNEE_ACTION' | 'UNRESOLVED_THREAD';
+export type ReasonKind =
+  | 'REVIEW_REQUESTED'
+  | 'ASSIGNEE_ACTION'
+  | 'UNRESOLVED_THREAD'
+  /** The merge request is unattended and its warnings went to the author. */
+  | 'MR_WARNING';
 
 export interface MergeRequestRef {
   url: string;
@@ -22,6 +28,12 @@ export interface MergeRequestRef {
   labels: string[];
   /** Comment count, paired with lastPushAt to detect movement on a muted merge request. */
   notesCount: number | null;
+  /**
+   * Setup problems with the merge request itself. Carried on the ref rather than on
+   * the reason so that every row for this merge request shows them, whoever the row
+   * belongs to.
+   */
+  warnings: Warning[];
 }
 
 export interface Reason {
@@ -95,7 +107,11 @@ export function mentionedUsernames(body: string): string[] {
   return [...found];
 }
 
-function toRef(mr: EnrichedMergeRequest, lastPushAt: string | null): MergeRequestRef {
+function toRef(
+  mr: EnrichedMergeRequest,
+  lastPushAt: string | null,
+  warnings: Warning[],
+): MergeRequestRef {
   return {
     url: mr.webUrl,
     title: mr.title,
@@ -107,6 +123,7 @@ function toRef(mr: EnrichedMergeRequest, lastPushAt: string | null): MergeReques
     lastPushAt,
     labels: mr.labels?.nodes.map((l) => l.title) ?? [],
     notesCount: mr.userNotesCount ?? null,
+    warnings,
   };
 }
 
@@ -132,7 +149,8 @@ export function evaluateMergeRequest(
 ): Reason[] {
   const { rules, userFilter } = options;
   const lastPushAt = lastPushOf(mr);
-  const ref = toRef(mr, lastPushAt);
+  const warnings = evaluateWarnings(mr, { rules, userFilter });
+  const ref = toRef(mr, lastPushAt, warnings);
   const activity = buildActivityIndex(mr);
   const approvedBy = new Set((mr.approvedBy?.nodes ?? []).map((u) => u.username));
   const author = mr.author?.username ?? null;
@@ -177,6 +195,25 @@ export function evaluateMergeRequest(
   if (rules.unresolved_threads) {
     for (const reason of threadReasons(threads, ref, activity)) {
       if (!isExcludedUser(reason.username, null, userFilter)) reasons.push(reason);
+    }
+  }
+
+  // Nobody is on the hook, so nobody would ever see this merge request — not even to
+  // learn that it has no reviewer. Tell the author instead. Deliberately last, so it
+  // reads the post-exclusion count: a merge request whose only reviewer is a bot is
+  // unattended in every sense that matters.
+  if (rules.notify_author_of_warnings && author && authorShouldHear(reasons.length, warnings)) {
+    if (!isExcludedUser(author, mr.author?.bot, userFilter)) {
+      reasons.push({
+        kind: 'MR_WARNING',
+        username: author,
+        mr: ref,
+        waitingSince: ref.createdAt,
+        // Reads correctly under the shared "waiting for your input" heading, which a
+        // row saying "nobody is waiting on this" would contradict. The warning box
+        // underneath supplies the specifics.
+        detail: 'This one is yours to move along',
+      });
     }
   }
 

@@ -48,7 +48,14 @@ export interface DigestResult {
   undeliverable: UndeliverableGroup[];
 }
 
-const KIND_ORDER: ReasonKind[] = ['REVIEW_REQUESTED', 'ASSIGNEE_ACTION', 'UNRESOLVED_THREAD'];
+const KIND_ORDER: ReasonKind[] = [
+  'REVIEW_REQUESTED',
+  'ASSIGNEE_ACTION',
+  'UNRESOLVED_THREAD',
+  // Last: a warning row is the least urgent thing in a digest, because nobody is
+  // actually blocked by it.
+  'MR_WARNING',
+];
 
 function daysBetween(fromIso: string, now: Date): number {
   const ms = now.getTime() - Date.parse(fromIso);

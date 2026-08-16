@@ -48,7 +48,20 @@ const KIND_LABEL: Record<ReasonKind, string> = {
   REVIEW_REQUESTED: 'Review',
   ASSIGNEE_ACTION: 'Assignee',
   UNRESOLVED_THREAD: 'Thread',
+  MR_WARNING: 'Unattended',
 };
+
+/**
+ * The warning box is deliberately subordinate to the row it hangs off: it explains
+ * something about the merge request, never a fresh demand on the reader. Rendering it
+ * as a labelled aside rather than another bullet keeps "you are blocking three people"
+ * visually louder than "this has no ticket".
+ */
+const WARNING_HEADING = 'Needs attention';
+
+function warningDetails(item: DigestItem): string[] {
+  return item.mr.warnings.map((w) => w.detail);
+}
 
 export function escapeHtml(value: string): string {
   return value
@@ -120,6 +133,11 @@ function renderText(digest: Digest, links?: SelfServiceLinks | null): string {
       `  ${item.mr.projectPath} !${item.mr.iid} — waiting ${waitingPhrase(item.waitingDays)}`,
     );
     lines.push(`  ${item.detail}`);
+    const warnings = warningDetails(item);
+    if (warnings.length > 0) {
+      lines.push(`  ${WARNING_HEADING}:`);
+      for (const detail of warnings) lines.push(`    - ${detail}`);
+    }
     lines.push(`  ${item.mr.url}`);
     if (links) lines.push(`  Mute this one: ${links.mute(item.mr.url)}`);
     lines.push('');
@@ -137,6 +155,27 @@ function renderText(digest: Digest, links?: SelfServiceLinks | null): string {
 }
 
 // -------------------------------------------------------------------- html
+
+/**
+ * Inline styles rather than a class, because every mail client that matters strips or
+ * ignores a stylesheet in the head — the rest of this template works the same way.
+ */
+function renderWarningBox(item: DigestItem): string {
+  const warnings = warningDetails(item);
+  if (warnings.length === 0) return '';
+
+  const rows = warnings
+    .map(
+      (detail) =>
+        `<div style="color:#7a4b00;font-size:12px;margin-top:2px;">• ${escapeHtml(detail)}</div>`,
+    )
+    .join('');
+
+  return `<div style="margin-top:8px;padding:8px 10px;background:#fff8e6;border-left:3px solid #d9a300;border-radius:3px;">
+            <div style="color:#7a4b00;font-size:12px;font-weight:600;">${escapeHtml(WARNING_HEADING)}</div>
+            ${rows}
+          </div>`;
+}
 
 function renderRow(item: DigestItem, links?: SelfServiceLinks | null): string {
   const chips = item.kinds
@@ -161,6 +200,7 @@ function renderRow(item: DigestItem, links?: SelfServiceLinks | null): string {
           )} !${escapeHtml(item.mr.iid)}</div>
           <div style="margin-top:6px;">${chips}</div>
           <div style="color:#3a4a5e;font-size:13px;margin-top:6px;">${escapeHtml(item.detail)}</div>
+          ${renderWarningBox(item)}
           ${
             links
               ? `<div style="margin-top:6px;"><a href="${escapeHtml(
@@ -249,6 +289,20 @@ function cardItemBlocks(item: DigestItem, links?: SelfServiceLinks | null): Reco
               wrap: true,
               size: 'Small',
             },
+            ...(warningDetails(item).length > 0
+              ? [
+                  {
+                    type: 'TextBlock',
+                    text: `${escapeCardText(WARNING_HEADING)}: ${escapeCardText(
+                      warningDetails(item).join('; '),
+                    )}`,
+                    wrap: true,
+                    size: 'Small',
+                    color: 'Warning',
+                    spacing: 'Small',
+                  },
+                ]
+              : []),
             ...(links
               ? [
                   {
@@ -411,11 +465,17 @@ function renderSlackBlocks(
     const kinds = item.kinds.map((k) => KIND_LABEL[k]).join(' · ');
     const muteSuffix = links ? ` · ${slackLink(links.mute(item.mr.url), 'mute this one')}` : '';
 
+    const warnings = warningDetails(item);
+    const warningLine =
+      warnings.length > 0
+        ? `\n> *${escapeSlackText(WARNING_HEADING)}:* ${escapeSlackText(warnings.join('; '))}`
+        : '';
+
     blocks.push({
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `*${slackLink(item.mr.url, item.mr.title)}*\n${escapeSlackText(item.detail)}`,
+        text: `*${slackLink(item.mr.url, item.mr.title)}*\n${escapeSlackText(item.detail)}${warningLine}`,
       },
     });
     blocks.push({
@@ -467,6 +527,12 @@ function renderTelegramHtml(digest: Digest, links?: SelfServiceLinks | null): st
       `  <i>${escapeTelegramHtml(item.mr.projectPath)} !${escapeTelegramHtml(item.mr.iid)} · ${escapeTelegramHtml(kinds)} · waiting ${waitingPhrase(item.waitingDays)}</i>`,
     );
     lines.push(`  ${escapeTelegramHtml(item.detail)}`);
+    const warnings = warningDetails(item);
+    if (warnings.length > 0) {
+      lines.push(
+        `  <b>${escapeTelegramHtml(WARNING_HEADING)}:</b> ${escapeTelegramHtml(warnings.join('; '))}`,
+      );
+    }
     if (links) {
       lines.push(`  <a href="${escapeTelegramHtml(links.mute(item.mr.url))}">Mute this one</a>`);
     }

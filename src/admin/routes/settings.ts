@@ -17,6 +17,14 @@ const RULE_LABELS: Record<string, string> = {
   'exclude.bots': 'Ignore bot accounts',
 };
 
+/** Warnings ride along on existing rows, so they get their own group on the page. */
+const WARNING_LABELS: Record<string, string> = {
+  'rules.warn_missing_reviewer': 'Warn when a non-draft merge request has no reviewer',
+  'rules.warn_missing_ticket': 'Warn when no issue key appears in the title or description',
+  'rules.notify_author_of_warnings':
+    'Tell the author when nobody at all is waiting on their merge request',
+};
+
 function redact(value: string | undefined | null): string {
   if (!value) return 'not set';
   return `${'•'.repeat(8)} (${value.length} chars)`;
@@ -42,17 +50,21 @@ export function registerSettings(app: FastifyInstance, ctx: AdminContext): void 
       nextRun = 'invalid expression';
     }
 
-    const toggles = Object.entries(RULE_LABELS)
-      .map(([key, label]) => {
-        const current = key.startsWith('rules.')
-          ? (config.rules as unknown as Record<string, boolean>)[key.slice('rules.'.length)]
-          : config.exclude.bots;
-        return html`<label>
-          <input type="checkbox" name="${key}" ${current ? 'checked' : ''} />
-          ${label} ${raw(overridden(key as SettingKey))}
-        </label>`;
-      })
-      .join('');
+    const checkboxes = (labels: Record<string, string>) =>
+      Object.entries(labels)
+        .map(([key, label]) => {
+          const current = key.startsWith('rules.')
+            ? (config.rules as unknown as Record<string, boolean>)[key.slice('rules.'.length)]
+            : config.exclude.bots;
+          return html`<label>
+            <input type="checkbox" name="${key}" ${current ? 'checked' : ''} />
+            ${label} ${raw(overridden(key as SettingKey))}
+          </label>`;
+        })
+        .join('');
+
+    const toggles = checkboxes(RULE_LABELS);
+    const warningToggles = checkboxes(WARNING_LABELS);
 
     const body = html`
       <div class="card">
@@ -95,6 +107,36 @@ export function registerSettings(app: FastifyInstance, ctx: AdminContext): void 
               </label>
               <input id="max_items" name="notifications.max_items_per_digest" type="number" min="1" step="1"
                      value="${config.notifications.max_items_per_digest}" />
+            </div>
+            <button type="submit">Save</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>Warnings</h2>
+        <p class="hint">
+          Problems with the merge request itself rather than with a person. They appear as a
+          box on the rows people already receive, so they add no extra messages — except for a
+          merge request nobody is waiting on at all, which would otherwise reach nobody.
+        </p>
+        <form method="post" action="/settings/warnings">
+          <fieldset>
+            <legend>Checks</legend>
+            <div class="checks">${raw(warningToggles)}</div>
+          </fieldset>
+          <div class="row">
+            <div class="field">
+              <label for="ticket_pattern">
+                Issue key pattern ${raw(overridden('rules.ticket_pattern'))}
+              </label>
+              <input id="ticket_pattern" name="rules.ticket_pattern" size="28"
+                     value="${config.rules.ticket_pattern}" />
+              <p class="hint">
+                A regular expression, matched case-insensitively against the title and the
+                description. The default <code>[A-Z][A-Z0-9]+-\\d+</code> matches Jira-style keys
+                such as <code>PROJ-1234</code>.
+              </p>
             </div>
             <button type="submit">Save</button>
           </div>
@@ -260,6 +302,38 @@ export function registerSettings(app: FastifyInstance, ctx: AdminContext): void 
     return redirectWith(reply, '/settings', { kind: 'ok', message: 'Rules saved.' });
   });
 
+  app.post('/settings/warnings', async (request, reply) => {
+    const body = request.body as Record<string, unknown>;
+    const before = ctx.provider.resolve().rules;
+
+    // Validate the pattern before writing anything: a half-applied save that leaves the
+    // check enabled against an uncompilable expression would silently match nothing.
+    const pattern = formValue(body['rules.ticket_pattern']) ?? '';
+    const parsed = SETTING_SCHEMAS['rules.ticket_pattern'].safeParse(pattern);
+    if (!parsed.success) {
+      return redirectWith(reply, '/settings', {
+        kind: 'error',
+        message: `Issue key pattern: ${parsed.error.issues[0]!.message}`,
+      });
+    }
+
+    for (const key of Object.keys(WARNING_LABELS)) {
+      if (isSettingKey(key)) ctx.repo.setSetting(key, body[key] !== undefined);
+    }
+    ctx.repo.setSetting('rules.ticket_pattern', parsed.data);
+
+    ctx.audit.record({
+      actor: 'admin',
+      sourceIp: sourceIp(request),
+      action: 'setting.warnings',
+      target: 'rules',
+      before,
+      after: ctx.provider.resolve().rules,
+    });
+
+    return redirectWith(reply, '/settings', { kind: 'ok', message: 'Warnings saved.' });
+  });
+
   app.post('/settings/channels', async (request, reply) => {
     const body = request.body as Record<string, unknown>;
     const selected = formList(body.channels);
@@ -321,4 +395,7 @@ export function registerSettings(app: FastifyInstance, ctx: AdminContext): void 
 }
 
 /** The setting keys this page is allowed to write. */
-export const EDITABLE_RULE_KEYS = Object.keys(RULE_LABELS).filter(isSettingKey);
+export const EDITABLE_RULE_KEYS = [
+  ...Object.keys(RULE_LABELS),
+  ...Object.keys(WARNING_LABELS),
+].filter(isSettingKey);

@@ -23,6 +23,7 @@ function item(overrides: Partial<DigestItem> = {}): DigestItem {
       lastPushAt: '2026-08-05T00:00:00Z',
       labels: [],
       notesCount: 0,
+      warnings: [],
     },
     kinds: ['REVIEW_REQUESTED'] as ReasonKind[],
     waitingSince: '2026-08-05T00:00:00Z',
@@ -263,5 +264,62 @@ describe('renderDigest', () => {
     expect(out.html).toContain('Assignee');
     expect(out.html).toContain('Thread');
     expect(JSON.stringify(out.card)).toContain('Assignee · Thread');
+  });
+});
+
+describe('the warning box', () => {
+  const warned = () =>
+    item({
+      mr: {
+        ...item().mr,
+        warnings: [
+          { kind: 'NO_REVIEWER', detail: 'No reviewer is assigned' },
+          { kind: 'NO_TICKET', detail: 'No issue key in the title or the description' },
+        ],
+      },
+    });
+
+  it('appears in every representation', () => {
+    const out = renderDigest(digest({ items: [warned()] }), TEMPLATE);
+
+    for (const body of [out.text, out.html, out.telegramHtml, JSON.stringify(out.card), JSON.stringify(out.slackBlocks)]) {
+      expect(body).toContain('Needs attention');
+      expect(body).toContain('No reviewer is assigned');
+      expect(body).toContain('No issue key in the title');
+    }
+  });
+
+  it('is absent entirely when nothing is wrong', () => {
+    const out = renderDigest(digest(), TEMPLATE);
+
+    for (const body of [out.text, out.html, out.telegramHtml, JSON.stringify(out.card), JSON.stringify(out.slackBlocks)]) {
+      expect(body).not.toContain('Needs attention');
+    }
+  });
+
+  it('escapes a hostile warning detail in the HTML body', () => {
+    const hostile = item({
+      mr: {
+        ...item().mr,
+        warnings: [{ kind: 'NO_TICKET', detail: '<script>alert(1)</script>' }],
+      },
+    });
+    const out = renderDigest(digest({ items: [hostile] }), TEMPLATE);
+
+    expect(out.html).not.toContain('<script>');
+    expect(out.html).toContain('&lt;script&gt;');
+  });
+
+  it('keeps the card inside the Teams size limit', () => {
+    const items = Array.from({ length: 40 }, () => warned());
+    const out = renderDigest(digest({ items, totalItems: 40 }), TEMPLATE);
+    expect(Buffer.byteLength(JSON.stringify(out.card), 'utf8')).toBeLessThanOrEqual(24_000);
+  });
+
+  it('does not put "waiting today" into any prose body', () => {
+    const today = item({ waitingDays: 0, mr: { ...warned().mr } });
+    const out = renderDigest(digest({ items: [today] }), TEMPLATE);
+    expect(out.text).not.toContain('waiting today');
+    expect(out.telegramHtml).not.toContain('waiting today');
   });
 });

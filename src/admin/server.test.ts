@@ -408,6 +408,33 @@ describe('admin server', () => {
       expect(res.headers.location).toContain('err=');
     });
 
+    it('writes every warning toggle explicitly, including the unchecked ones', async () => {
+      const cookie = await login();
+      await post('/settings/warnings', cookie, {
+        'rules.warn_missing_ticket': 'on',
+        'rules.ticket_pattern': '#\\d+',
+      });
+
+      expect(repo.getSetting('rules.warn_missing_ticket')).toBe(true);
+      expect(repo.getSetting('rules.warn_missing_reviewer')).toBe(false);
+      expect(repo.getSetting('rules.notify_author_of_warnings')).toBe(false);
+      expect(repo.getSetting('rules.ticket_pattern')).toBe('#\\d+');
+      expect(audit.list({ action: 'setting.warnings' })).toHaveLength(1);
+    });
+
+    it('rejects an issue key pattern that is not a valid regular expression', async () => {
+      const cookie = await login();
+      const res = await post('/settings/warnings', cookie, {
+        'rules.warn_missing_ticket': 'on',
+        'rules.ticket_pattern': '([A-Z]',
+      });
+
+      expect(res.headers.location).toContain('err=');
+      // Nothing is written, so the check cannot be left on against a dead pattern.
+      expect(repo.getSetting('rules.warn_missing_ticket')).toBeUndefined();
+      expect(repo.getSetting('rules.ticket_pattern')).toBeUndefined();
+    });
+
     it('clears every override on reset', async () => {
       const cookie = await login();
       repo.setSetting('rules.min_age_hours', 48);

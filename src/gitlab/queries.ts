@@ -24,6 +24,21 @@ export interface Capabilities {
 
 export const FULL_CAPABILITIES: Capabilities = { reviewState: true, lastCommits: true };
 
+/**
+ * Selections the caller opts into, as opposed to `Capabilities`, which is about what
+ * the server supports.
+ */
+export interface QueryOptions {
+  /**
+   * Descriptions are by far the largest field on a merge request and are pulled for
+   * every open merge request in every group on every scan, so they are fetched only
+   * when a rule actually reads them.
+   */
+  includeDescription: boolean;
+}
+
+export const DEFAULT_QUERY_OPTIONS: QueryOptions = { includeDescription: false };
+
 const participantFields = (caps: Capabilities) => `
       username
       name
@@ -42,7 +57,10 @@ const participantFields = (caps: Capabilities) => `
  * selected here — they are fetched in a second pass only for merge requests whose
  * userDiscussionsCount exceeds resolvedDiscussionsCount.
  */
-export function groupMergeRequestsQuery(caps: Capabilities): string {
+export function groupMergeRequestsQuery(
+  caps: Capabilities,
+  opts: QueryOptions = DEFAULT_QUERY_OPTIONS,
+): string {
   return `
 query GroupMergeRequests(
   $fullPath: ID!
@@ -65,6 +83,7 @@ query GroupMergeRequests(
         id
         iid
         title
+        ${opts.includeDescription ? 'description' : ''}
         webUrl
         draft
         createdAt
