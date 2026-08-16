@@ -39,6 +39,8 @@ const adminSchema = z.object({
   enabled: z.boolean().default(true),
   host: z.string().default('127.0.0.1'),
   port: z.number().int().min(1).max(65_535).default(8080),
+  /** Public URL recipients can use; separate from the bind address for reverse proxies. */
+  public_url: z.string().url().optional(),
   password: z.string().default(''),
   session_secret: z.string().default(''),
   session_ttl_hours: z.number().int().positive().default(12),
