@@ -10,6 +10,7 @@ import { buildNotifiers } from './notify/factory.js';
 import { renderDigest } from './notify/render.js';
 import { Scheduler } from './scheduler.js';
 import { executeRun } from './run.js';
+import { VERSION } from './version.js';
 import type { Digest } from './domain/digest.js';
 
 type FlagValue = string | true | string[];
@@ -82,6 +83,7 @@ Usage:
                                   --project can be repeated to limit the scan.
   nudge check-config [--remote]   Validate the config file; --remote also tests GitLab
   nudge test-notify --recipient U Send one sample digest to a recipient
+  nudge version                   Print the running version
   nudge help
 
 Options:
@@ -278,6 +280,9 @@ async function commandServe(args: Args): Promise<number> {
   const config = app.provider.resolve();
   const dryRun = flagBool(args, 'dry-run') || readEnvFlag('DRY_RUN');
 
+  // First line of every boot, so a bug report can start from a known build.
+  logger.info({ version: VERSION, node: process.version }, 'ReviewNudge starting');
+
   const sessionSecret = resolveSecret(config);
   if (!sessionSecret) {
     logger.warn(
@@ -346,6 +351,12 @@ async function main(): Promise<void> {
         break;
       case 'test-notify':
         process.exitCode = await commandTestNotify(args);
+        break;
+      case 'version':
+      case '--version':
+      case '-v':
+        // Plain, so `nudge version` can be pasted straight into a bug report.
+        process.stdout.write(`${VERSION}\n`);
         break;
       case 'help':
       case '--help':

@@ -481,6 +481,7 @@ Check it works with `node dist/cli.js test-notify --recipient alice`.
 | `nudge run --once` | One cycle now. `--dry-run` prints instead of delivering |
 | `nudge check-config` | Validates the config file offline. `--remote` also contacts GitLab and reads each group |
 | `nudge test-notify --recipient <user>` | Sends one sample digest over every configured channel |
+| `nudge version` | Prints the running version, for pasting into a bug report |
 
 Common flags: `-c, --config <path>`, `--dry-run`.
 
@@ -572,7 +573,7 @@ received" trigger, or the card action is not reading the posted payload. Retry w
 ## Development
 
 ```bash
-npm test          # 337 tests
+npm test          # 372 tests
 npm run typecheck
 npm run lint
 npm run dev       # tsx watch, serve mode
@@ -581,6 +582,21 @@ npm run dev       # tsx watch, serve mode
 Tests use Vitest. The rule engine (`src/domain/reasons.ts`) is the product, so it carries
 the heaviest coverage; `src/admin/server.test.ts` drives the panel through Fastify's
 `inject`, and `src/run.test.ts` covers orchestration with a stubbed GitLab.
+
+### Versions
+
+[`CHANGELOG.md`](CHANGELOG.md) records what changed and explains what the numbers mean:
+because nothing imports this project, they describe the **`config.yaml` and database**
+surface rather than a public API.
+
+`package.json` is the only place the version is written. `src/version.ts` reads it and
+everything else imports from there — the panel footer, the boot log, the `user-agent` sent
+to GitLab, and `nudge version`. That module has to stay at the top of `src/`: it resolves
+`../package.json`, which is the one path that works both from `src/` under tsx and from
+`dist/` in the container, where the Dockerfile copies `package.json` alongside.
+
+The version is shown to signed-in operators only. The login page deliberately omits it,
+so an unauthenticated visitor learns nothing about the build.
 
 ```
 src/

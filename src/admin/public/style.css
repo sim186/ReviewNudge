@@ -95,6 +95,15 @@ main {
   padding: 20px;
 }
 
+/* Build identity, so a screenshot of the panel says which version produced it. */
+.siteinfo {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 4px 20px 24px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
 /* Recipient-facing pages: one column, easier to read on a phone. */
 main.narrow {
   max-width: 640px;

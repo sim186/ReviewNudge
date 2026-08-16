@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { VERSION } from '../../version.js';
 import { esc, html, page, raw, relativeTime, SafeHtml } from './layout.js';
 
 describe('html', () => {
@@ -60,6 +61,11 @@ describe('page', () => {
     expect(out).toContain('<div class="card">hello</div>');
     expect(out).toContain('&lt;evil&gt;');
     expect(out).not.toContain('[object Object]');
+  });
+
+  it('names the running version in the footer, so a screenshot identifies the build', () => {
+    const out = page({ title: 'Pending', active: '/pending' }, html`<p></p>`);
+    expect(out).toContain(`ReviewNudge ${VERSION}`);
   });
 
   it('marks the active navigation item', () => {

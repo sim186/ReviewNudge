@@ -1,4 +1,5 @@
 /** Minimal server-rendered views: tagged templates, no engine, no client framework. */
+import { VERSION } from '../../version.js';
 
 export function esc(value: unknown): string {
   return String(value ?? '')
@@ -106,6 +107,7 @@ export function page(options: PageOptions, body: string | SafeHtml): string {
         </header>
         ${banners}
         <main>${raw(body)}</main>
+        <footer class="siteinfo">ReviewNudge ${VERSION}</footer>
       </body>
     </html>`.toString();
 }

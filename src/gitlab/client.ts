@@ -1,4 +1,5 @@
 import { logger as rootLogger, type Logger } from '../logger.js';
+import { USER_AGENT } from '../version.js';
 import {
   CURRENT_USER_QUERY,
   DEFAULT_QUERY_OPTIONS,
@@ -135,7 +136,7 @@ export class GitLabClient {
           headers: {
             'content-type': 'application/json',
             authorization: `Bearer ${this.options.token}`,
-            'user-agent': 'ReviewNudge',
+            'user-agent': USER_AGENT,
           },
           body: JSON.stringify({ query, variables }),
           signal: controller.signal,

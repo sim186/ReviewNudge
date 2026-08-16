@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { pino } from 'pino';
 import { GitLabClient, GitLabError } from './client.js';
+import { USER_AGENT } from '../version.js';
 import type { GqlMergeRequest } from './types.js';
 
 const silent = pino({ level: 'silent' });
@@ -62,6 +63,8 @@ describe('GitLabClient', () => {
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe('https://gitlab.example.com/api/graphql');
     expect((init.headers as Record<string, string>).authorization).toBe('Bearer glpat-test');
+    // Identifies the build to whoever reads the GitLab instance's API logs.
+    expect((init.headers as Record<string, string>)['user-agent']).toBe(USER_AGENT);
     expect(JSON.parse(init.body as string).variables).toMatchObject({
       fullPath: 'eng',
       includeSubgroups: true,
