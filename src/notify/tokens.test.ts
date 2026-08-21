@@ -72,9 +72,9 @@ describe('selfServiceBaseUrl', () => {
         enabled: true,
         host: '0.0.0.0',
         port: 8080,
-        public_url: 'https://dev-server.intern:8449/',
+        public_url: 'https://nudge.example.com/',
       }),
-    ).toBe('https://dev-server.intern:8449');
+    ).toBe('https://nudge.example.com');
   });
 
   it('returns null when the panel is switched off', () => {
