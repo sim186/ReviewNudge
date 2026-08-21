@@ -188,6 +188,32 @@ async function commandTestNotify(args: Args): Promise<number> {
   const config = app.provider.resolve();
   let recipient = config.recipients.find((r) => r.gitlab_username === username);
 
+  if (!recipient) {
+    // Same fallback the run path uses: ask GitLab for the public email before guessing
+    // that the username is the local part of the address.
+    const client = new GitLabClient({
+      url: config.gitlab.url,
+      token: config.gitlab.token,
+      timeoutMs: config.gitlab.timeout_ms,
+      pageSize: config.gitlab.page_size,
+      maxRetries: config.gitlab.max_retries,
+      logger,
+    });
+    const gitlabEmail = (await client.fetchUserEmails([username])).get(username);
+    if (gitlabEmail) {
+      recipient = {
+        gitlab_username: username,
+        email: gitlabEmail,
+        teams_upn: gitlabEmail,
+        slack_id: null,
+        telegram_chat_id: null,
+        channels: null,
+        snooze_until: null,
+        enabled: true,
+      };
+    }
+  }
+
   if (!recipient && config.default_recipient_domain) {
     const derivedAddress = `${username}@${config.default_recipient_domain}`;
     recipient = {

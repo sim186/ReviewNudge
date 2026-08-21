@@ -26,6 +26,13 @@ columns and settings it does not know about rather than removing them.
 
 ### Added
 
+- **Email fallback via GitLab's public email.** When a username has no explicit recipient
+  entry, the address is now looked up from GitLab (`users(usernames: …) → publicEmail`)
+  before falling back to the `{username}@{domain}` guess. Usernames and email local parts
+  do not always match ("lukaskoch" vs lukas.koch@…), which silently sent digests to a
+  wrong address that SMTP accepted anyway — so nothing ever looked broken. The lookup
+  only runs for unmapped usernames, costs one batched request per scan, and degrades to
+  partial results if GitLab cannot answer; `nudge test-notify` uses the same fallback.
 - **Warnings**: a second class of finding, describing the merge request rather than a
   person. Raised when a non-draft merge request has no reviewer, or when neither its
   title nor its description mentions an issue key. Warnings do not send messages of their

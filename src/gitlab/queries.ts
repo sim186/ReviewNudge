@@ -170,6 +170,23 @@ query GroupProjects(
 }`;
 }
 
+/**
+ * Public email addresses for a batch of usernames.
+ *
+ * Used to reach people whose GitLab username does not match the local part of their
+ * email address ("lukaskoch" vs lukas.koch@…), which a derived `{username}@{domain}`
+ * address silently gets wrong.
+ */
+export const USER_EMAILS_QUERY = `
+query UserEmails($usernames: [String!]) {
+  users(usernames: $usernames) {
+    nodes {
+      username
+      publicEmail
+    }
+  }
+}`;
+
 /** Every group the token can see, following cursors. */
 export const ACCESSIBLE_GROUPS_QUERY = `
 query AccessibleGroups($first: Int!, $after: String) {

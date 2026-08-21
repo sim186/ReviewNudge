@@ -41,6 +41,8 @@ export interface BuildDigestOptions {
   availableChannels: Channel[];
   /** When a GitLab username has no explicit recipient entry, derive the email as `{username}@{domain}`. */
   defaultDomain?: string;
+  /** Public emails looked up from GitLab, tried before the `{username}@{domain}` guess. A `null` value means GitLab knows the user but exposes no address. */
+  gitlabEmails?: ReadonlyMap<string, string | null>;
 }
 
 export interface DigestResult {
@@ -121,6 +123,23 @@ export function buildDigests(reasons: Reason[], options: BuildDigestOptions): Di
       .sort((a, b) => Date.parse(a.waitingSince) - Date.parse(b.waitingSince));
 
     let recipient = byUsername.get(username);
+    if (!recipient) {
+      // GitLab's own record of the address beats guessing that the username is the
+      // local part — "lukaskoch" and lukas.koch@… are real people this tool has lost.
+      const gitlabEmail = options.gitlabEmails?.get(username);
+      if (gitlabEmail) {
+        recipient = {
+          gitlab_username: username,
+          email: gitlabEmail,
+          teams_upn: gitlabEmail,
+          slack_id: null,
+          telegram_chat_id: null,
+          channels: null,
+          snooze_until: null,
+          enabled: true,
+        };
+      }
+    }
     if (!recipient && options.defaultDomain) {
       const derivedAddress = `${username}@${options.defaultDomain}`;
       recipient = {

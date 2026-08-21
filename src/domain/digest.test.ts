@@ -130,6 +130,31 @@ describe('buildDigests', () => {
     ]);
   });
 
+  it('uses the GitLab public email when no explicit mapping exists', () => {
+    const opts = options({ gitlabEmails: new Map([['carol', 'carol.ren@example.com']]) });
+    const { digests } = buildDigests([reason('carol', '1')], opts);
+    expect(digests).toHaveLength(1);
+    expect(digests[0]?.recipient.email).toBe('carol.ren@example.com');
+  });
+
+  it('prefers the explicit mapping over the GitLab public email', () => {
+    const opts = options({
+      gitlabEmails: new Map([['alice', 'wrong@example.com']]),
+    });
+    const { digests } = buildDigests([reason('alice', '1')], opts);
+    expect(digests[0]?.recipient.email).toBe('alice@example.com');
+  });
+
+  it('falls back to the derived domain when GitLab has no public email', () => {
+    const opts = options({
+      defaultDomain: 'example.com',
+      gitlabEmails: new Map([['carol', null]]),
+    });
+    const { digests } = buildDigests([reason('carol', '1')], opts);
+    expect(digests).toHaveLength(1);
+    expect(digests[0]?.recipient.email).toBe('carol@example.com');
+  });
+
   it('reports a snoozed person separately from an unmapped one', () => {
     const opts = options({
       recipients: [recipient({ gitlab_username: 'alice', snooze_until: '2026-09-01' })],

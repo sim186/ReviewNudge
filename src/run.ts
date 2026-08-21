@@ -223,6 +223,17 @@ export async function executeRun(
       log.debug({ count: muteResult.suppressed.length }, 'items suppressed by personal mutes');
     }
 
+    // ------------------------------------------------------- email fallback lookup
+    // Only usernames without an explicit mapping cost a GitLab request; everyone else
+    // is already reachable exactly as configured.
+    const unmappedUsernames = [...new Set(reasons.map((r) => r.username))].filter(
+      (u) => !config.recipients.some((r) => r.gitlab_username === u),
+    );
+    const gitlabEmails =
+      unmappedUsernames.length > 0
+        ? await client.fetchUserEmails(unmappedUsernames)
+        : new Map<string, string>();
+
     // -------------------------------------------------------------- digest
     const result = buildDigests(reasons, {
       recipients: config.recipients,
@@ -232,6 +243,7 @@ export async function executeRun(
       timezone: config.schedule.timezone,
       now,
       defaultDomain: config.default_recipient_domain ?? undefined,
+      gitlabEmails,
     });
 
     repo.replaceSnapshot(runId, [

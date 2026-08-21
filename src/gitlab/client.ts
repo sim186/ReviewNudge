@@ -5,6 +5,7 @@ import {
   DEFAULT_QUERY_OPTIONS,
   FULL_CAPABILITIES,
   MERGE_REQUEST_DISCUSSIONS_QUERY,
+  USER_EMAILS_QUERY,
   ACCESSIBLE_GROUPS_QUERY,
   groupMergeRequestsQuery,
   groupProjectsQuery,
@@ -322,6 +323,34 @@ export class GitLabClient {
 
     this.log.debug({ count: collected.length }, 'fetched accessible groups');
     return collected;
+  }
+
+  /**
+   * Public email addresses for a set of usernames.
+   *
+   * A failed or partial lookup degrades to whatever was collected rather than sinking
+   * the run — names that come back without an address simply fall through to the
+   * derived-domain fallback in the digest builder.
+   */
+  async fetchUserEmails(usernames: readonly string[]): Promise<Map<string, string | null>> {
+    const unique = [...new Set(usernames)].sort();
+    const out = new Map<string, string | null>();
+    const chunkSize = this.pageSize;
+
+    for (let i = 0; i < unique.length; i += chunkSize) {
+      const chunk = unique.slice(i, i + chunkSize);
+      try {
+        const data = await this.request<{
+          users: { nodes: { username: string; publicEmail: string | null }[] } | null;
+        }>(USER_EMAILS_QUERY, { usernames: chunk });
+        for (const node of data.users?.nodes ?? []) out.set(node.username, node.publicEmail);
+      } catch (err) {
+        this.log.warn({ err: (err as Error).message }, 'could not look up user emails');
+        return out;
+      }
+    }
+
+    return out;
   }
 
   /** Turns a capability-related GraphQL error into a reduced query. */
