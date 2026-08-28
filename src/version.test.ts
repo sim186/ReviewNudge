@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { USER_AGENT, VERSION } from './version.js';
+import { ISSUES_URL, USER_AGENT, VERSION } from './version.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -19,6 +19,20 @@ describe('VERSION', () => {
     // this module is ever moved out of the top of src/.
     expect(VERSION).not.toBe('unknown');
     expect(VERSION).toMatch(/^\d+\.\d+\.\d+/);
+  });
+});
+
+describe('ISSUES_URL', () => {
+  it('matches package.json, which is the single source of truth', () => {
+    const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as {
+      bugs: { url: string };
+    };
+    expect(ISSUES_URL).toBe(pkg.bugs.url);
+  });
+
+  it('is a real link, since it goes out in every digest footer', () => {
+    expect(() => new URL(ISSUES_URL)).not.toThrow();
+    expect(ISSUES_URL).toMatch(/^https:/);
   });
 });
 

@@ -1,5 +1,6 @@
 import type { Digest, DigestItem } from '../domain/digest.js';
 import type { ReasonKind } from '../domain/reasons.js';
+import { ISSUES_URL } from '../version.js';
 
 /** Links that let the recipient act on their own notifications. */
 export interface SelfServiceLinks {
@@ -111,6 +112,13 @@ export function renderSubject(template: string, digest: Digest): string {
   return rendered;
 }
 
+/**
+ * The same invitation in every channel. Recipients never chose to run this and
+ * mostly have no idea who to tell when it gets something wrong, so the footer says.
+ */
+const FEEDBACK_PROMPT = 'Something wrong, or an idea to make this better?';
+const FEEDBACK_LINK = 'Open an issue';
+
 function truncationNote(digest: Digest): string | null {
   if (digest.truncated <= 0) return null;
   return `${digest.truncated} more not shown (${digest.totalItems} in total).`;
@@ -151,6 +159,7 @@ function renderText(digest: Digest, links?: SelfServiceLinks | null): string {
     lines.push('');
   }
   lines.push('— ReviewNudge');
+  lines.push(`${FEEDBACK_PROMPT} ${FEEDBACK_LINK}: ${ISSUES_URL}`);
   return lines.join('\n');
 }
 
@@ -249,6 +258,9 @@ function renderHtml(digest: Digest, links?: SelfServiceLinks | null): string {
               ? `<a href="${escapeHtml(links.manage)}" style="color:#6b7684;">Mute one of these, or pause everything.</a>`
               : 'To stop these, ask an administrator to snooze you or mute a merge request.'
           }
+          <br />
+          ${escapeHtml(FEEDBACK_PROMPT)}
+          <a href="${escapeHtml(ISSUES_URL)}" style="color:#6b7684;">${escapeHtml(FEEDBACK_LINK)}</a>.
         </td>
       </tr>
     </table>
@@ -361,6 +373,17 @@ function buildCard(
       size: 'Small',
     });
   }
+
+  // A TextBlock rather than an action: the action row is already full of merge
+  // requests, and this belongs quietly at the bottom.
+  body.push({
+    type: 'TextBlock',
+    text: `${FEEDBACK_PROMPT} [${FEEDBACK_LINK}](${ISSUES_URL})`,
+    wrap: true,
+    isSubtle: true,
+    size: 'Small',
+    spacing: 'Medium',
+  });
 
   return {
     $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
@@ -493,9 +516,8 @@ function renderSlackBlocks(
   const footer: string[] = [];
   if (hidden > 0) footer.push(`_${hidden} more not shown._`);
   if (links) footer.push(slackLink(links.manage, 'Mute one of these, or pause everything'));
-  if (footer.length > 0) {
-    blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: footer.join(' · ') }] });
-  }
+  footer.push(`${escapeSlackText(FEEDBACK_PROMPT)} ${slackLink(ISSUES_URL, FEEDBACK_LINK)}`);
+  blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: footer.join(' · ') }] });
 
   return blocks;
 }
@@ -546,6 +568,9 @@ function renderTelegramHtml(digest: Digest, links?: SelfServiceLinks | null): st
       `<a href="${escapeTelegramHtml(links.manage)}">Mute one of these, or pause everything</a>`,
     );
   }
+  lines.push(
+    `<i>${escapeTelegramHtml(FEEDBACK_PROMPT)} <a href="${escapeTelegramHtml(ISSUES_URL)}">${escapeTelegramHtml(FEEDBACK_LINK)}</a></i>`,
+  );
 
   return lines.join('\n').trim();
 }

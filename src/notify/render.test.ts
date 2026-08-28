@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Digest, DigestItem } from '../domain/digest.js';
 import type { ReasonKind } from '../domain/reasons.js';
+import { ISSUES_URL } from '../version.js';
 import {
   escapeCardText,
   escapeHtml,
@@ -54,6 +55,31 @@ function digest(overrides: Partial<Digest> = {}): Digest {
 }
 
 const TEMPLATE = '{count} merge requests are waiting for you';
+
+describe('feedback footer', () => {
+  /**
+   * Asserted across every channel at once, because the failure mode is adding a
+   * sixth renderer and quietly leaving its footer out.
+   */
+  it('invites the recipient to open an issue, whichever channel they get', () => {
+    const rendered = renderDigest(digest(), TEMPLATE);
+    const card = JSON.stringify(rendered.card);
+    const slack = JSON.stringify(rendered.slackBlocks);
+
+    for (const output of [rendered.text, rendered.html, rendered.telegramHtml, card, slack]) {
+      expect(output).toContain(ISSUES_URL);
+      expect(output).toContain('Open an issue');
+    }
+  });
+
+  it('still invites people when there are no self-service links to show', () => {
+    // The Slack footer used to be dropped entirely without links; the invitation
+    // has to survive that.
+    const rendered = renderDigest(digest(), TEMPLATE, null);
+    expect(JSON.stringify(rendered.slackBlocks)).toContain(ISSUES_URL);
+    expect(rendered.text).toContain(ISSUES_URL);
+  });
+});
 
 describe('helpers', () => {
   it('escapes HTML metacharacters', () => {

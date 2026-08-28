@@ -2,6 +2,13 @@
   "name": "review-nudge",
   "version": "0.2.0",
   "description": "Nudges GitLab users about merge requests waiting for their input, over email, Teams, Slack or Telegram.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sim186/ReviewNudge.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sim186/ReviewNudge/issues"
+  },
   "type": "module",
   "private": true,
   "engines": {

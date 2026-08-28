@@ -50,6 +50,10 @@ columns and settings it does not know about rather than removing them.
   recipient addresses as `{username}@{domain}` rather than listing everyone by hand.
 - The running version is now visible: in the admin panel footer, in the first line of the
   boot log, in the `user-agent` sent to GitLab, and from `nudge version`.
+- **Every digest footer now invites feedback**, pointing at the GitHub issue tracker in
+  all five channels. Recipients never chose to be nudged and mostly have no idea who to
+  tell when it gets something wrong; this gives them somewhere to go. The address comes
+  from `bugs.url` in package.json, so a fork changes it in one place.
 
 ### Fixed
 
