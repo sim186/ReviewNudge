@@ -169,6 +169,26 @@ describe('filterMergeRequest', () => {
     expect(filterMergeRequest(fresh, noThreshold).included).toBe(true);
   });
 
+  it('measures min_age_hours from the ready transition, not from creation', () => {
+    // Opened as a draft five days ago, readied two hours ago: still inside the
+    // quiet window, even though it is an old merge request by creation date.
+    const justReadied = mr({
+      createdAt: '2026-08-01T00:00:00Z',
+      notes: {
+        nodes: [
+          {
+            id: 'n-ready',
+            body: 'marked this merge request as **ready**',
+            createdAt: '2026-08-06T10:00:00Z',
+            system: true,
+            author: { username: 'bob', name: 'Bob' },
+          },
+        ],
+      },
+    });
+    expect(filterMergeRequest(justReadied, options).reason).toBe('too new');
+  });
+
   it('skips a merge request whose project could not be read', () => {
     expect(filterMergeRequest(mr({ project: null }), options).reason).toBe('no project');
   });

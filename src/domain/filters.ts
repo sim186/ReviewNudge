@@ -1,5 +1,6 @@
 import type { Exclusions, Rules } from '../config/schema.js';
 import type { GqlMergeRequest } from '../gitlab/types.js';
+import { readyAt } from './draft.js';
 
 /**
  * Compiles a glob to a regular expression.
@@ -118,7 +119,10 @@ export function filterMergeRequest(
     return { included: false, reason: 'muted' };
   }
 
-  const ageHours = (options.now.getTime() - Date.parse(mr.createdAt)) / 3_600_000;
+  // Measured from the moment it left draft, not from creation: otherwise a merge
+  // request that sat as a draft for a week arrives already past the threshold and
+  // skips the quiet window the setting exists to provide.
+  const ageHours = (options.now.getTime() - Date.parse(readyAt(mr))) / 3_600_000;
   if (Number.isFinite(ageHours) && ageHours < options.rules.min_age_hours) {
     return { included: false, reason: 'too new' };
   }

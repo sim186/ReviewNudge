@@ -122,6 +122,19 @@ describe('rule 1: reviewer has not approved', () => {
     expect(reason?.detail).toMatch(/have not approved/);
   });
 
+  it('waits from the ready transition, not from creation, on a former draft', () => {
+    const READY = '2026-08-09T00:00:00Z';
+    const mr = buildMr({
+      reviewers: { nodes: [participant('rev', 'UNREVIEWED')] },
+      notes: {
+        nodes: [note('author', READY, 'marked this merge request as **ready**', true)],
+      },
+    });
+    const [reason] = evaluateMergeRequest(mr, options());
+    // Eight days as a draft are not eight days the reviewer kept anyone waiting.
+    expect(reason?.waitingSince).toBe(READY);
+  });
+
   it('stays quiet once the reviewer has approved', () => {
     const mr = buildMr({
       reviewers: { nodes: [participant('rev', 'APPROVED')] },

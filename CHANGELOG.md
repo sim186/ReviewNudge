@@ -51,6 +51,18 @@ columns and settings it does not know about rather than removing them.
 - The running version is now visible: in the admin panel footer, in the first line of the
   boot log, in the `user-agent` sent to GitLab, and from `nudge version`.
 
+### Fixed
+
+- **Waiting time is counted from when a merge request left draft, not from when it was
+  opened.** A merge request that sat as a draft for ten days and went ready two days ago
+  told its reviewer they had kept people waiting for twelve, and crossed the seven-day
+  urgent threshold on the strength of days nobody was waiting. The same anchor now
+  applies to `min_age_hours`: since drafts are skipped, a creation-dated age let one go
+  ready and land in the very next digest, straight past the quiet window the setting
+  exists to provide. GitLab publishes no "left draft at" timestamp, so the transition is
+  read from the system notes; a merge request that was never a draft, or whose ready note
+  has aged out of the notes window, still counts from creation as before.
+
 ### Notes
 
 - Switching `warn_missing_ticket` on makes each scan fetch merge request descriptions,

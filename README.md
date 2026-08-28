@@ -55,6 +55,9 @@ Two deliberate refinements:
   the wait measured from that push.
 - **`require_activity_since_push`** (on by default) drops anyone who has already acted since
   the most recent push, so people are not nagged about work they have just done.
+- **Time as a draft does not count.** Both the wait shown on a row and `min_age_hours` are
+  measured from the moment the merge request left draft, so ten days of drafting are not
+  reported as ten days of somebody sitting on a review.
 
 Merge requests younger than `min_age_hours` are ignored, so nothing fires minutes after an
 MR is opened. Several reasons against the same merge request collapse into one row, and

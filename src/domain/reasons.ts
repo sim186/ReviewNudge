@@ -6,6 +6,7 @@ import type {
   GqlParticipant,
   ReviewState,
 } from '../gitlab/types.js';
+import { readyAt } from './draft.js';
 import { isExcludedUser, type UserFilterOptions } from './filters.js';
 import { authorShouldHear, evaluateWarnings, type Warning } from './warnings.js';
 
@@ -149,6 +150,9 @@ export function evaluateMergeRequest(
 ): Reason[] {
   const { rules, userFilter } = options;
   const lastPushAt = lastPushOf(mr);
+  // Anything phrased as waiting counts from here, never from creation: a draft is
+  // nobody's problem, so the ten days it spent as one are not days anyone waited.
+  const readySince = readyAt(mr);
   const warnings = evaluateWarnings(mr, { rules, userFilter });
   const ref = toRef(mr, lastPushAt, warnings);
   const activity = buildActivityIndex(mr);
@@ -171,6 +175,7 @@ export function evaluateMergeRequest(
         author,
         activity,
         lastPushAt,
+        readySince,
         rules,
       });
       if (reason && !excluded(reviewer)) reasons.push(reason);
@@ -208,7 +213,7 @@ export function evaluateMergeRequest(
         kind: 'MR_WARNING',
         username: author,
         mr: ref,
-        waitingSince: ref.createdAt,
+        waitingSince: readySince,
         // Reads correctly under the shared "waiting for your input" heading, which a
         // row saying "nobody is waiting on this" would contradict. The warning box
         // underneath supplies the specifics.
@@ -228,6 +233,8 @@ interface ReviewerContext {
   author: string | null;
   activity: Map<string, string>;
   lastPushAt: string | null;
+  /** When the merge request last became ready; see readyAt. */
+  readySince: string;
   rules: Rules;
 }
 
@@ -266,7 +273,7 @@ function reviewerReason(reviewer: GqlParticipant, ctx: ReviewerContext): Reason 
     kind: 'REVIEW_REQUESTED',
     username,
     mr: ctx.ref,
-    waitingSince: ctx.ref.createdAt,
+    waitingSince: ctx.readySince,
     detail:
       state === 'UNAPPROVED'
         ? 'You withdrew your approval and have not re-reviewed'
