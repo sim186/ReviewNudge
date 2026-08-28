@@ -6,6 +6,19 @@ import type { Notifier } from './types.js';
 
 type EmailConfig = NonNullable<Config['email']>;
 
+/**
+ * Ensures the From header says what sent the mail.
+ *
+ * A bare address leaves the sender name to the mail client, which shows the mailbox
+ * it was relayed from — "gitlab@…" on a shared relay — so the recipient has no idea
+ * what this is or why they got it. A `from` that already carries a display name is
+ * the operator's choice and is left exactly as written.
+ */
+export function fromHeader(from: string): string {
+  const trimmed = from.trim();
+  return trimmed.includes('<') ? trimmed : `ReviewNudge <${trimmed}>`;
+}
+
 export class EmailNotifier implements Notifier {
   readonly channel = 'email' as const;
   private transporter: Transporter;
@@ -32,7 +45,7 @@ export class EmailNotifier implements Notifier {
     }
 
     await this.transporter.sendMail({
-      from: this.config.from,
+      from: fromHeader(this.config.from),
       to,
       subject: rendered.subject,
       text: rendered.text,

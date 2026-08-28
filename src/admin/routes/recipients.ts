@@ -1,9 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { CHANNELS, channelSchema } from '../../config/schema.js';
+import { CHANNELS, type Channel, channelSchema } from '../../config/schema.js';
 import type { RecipientRow } from '../../db/repo.js';
 import { isSnoozed } from '../../domain/silence.js';
-import { CHANNEL_LIST } from '../../notify/channels.js';
+import { CHANNEL_LIST, CHANNEL_SPECS } from '../../notify/channels.js';
+import { availableChannels } from '../../notify/factory.js';
 import { type AdminContext, formList, formValue, redirectWith, render, sourceIp } from '../context.js';
 import { html, raw, type SafeHtml } from '../views/layout.js';
 
@@ -23,14 +24,38 @@ const recipientForm = z.object({
     .nullable(),
 });
 
-function recipientRow(r: RecipientRow, timezone: string, now: Date): SafeHtml {
+/**
+ * Channels this person has an address for that would never be used, because the
+ * channel is switched off in `notifications.channels`. Worth saying out loud: filling
+ * in a Telegram chat ID and selecting the channel saves cleanly, sends nothing, and
+ * logs nothing, because the channel is dropped long before a notifier is consulted.
+ */
+function inertChannels(r: RecipientRow, available: readonly Channel[]): Channel[] {
+  const requested = r.channels ?? [];
+  return CHANNELS.filter(
+    (c) => !available.includes(c) && Boolean(CHANNEL_SPECS[c].address(r)) && requested.includes(c),
+  );
+}
+
+function recipientRow(
+  r: RecipientRow,
+  timezone: string,
+  now: Date,
+  available: readonly Channel[],
+): SafeHtml {
   const snoozed = isSnoozed(r.snooze_until, timezone, now);
+  const inert = inertChannels(r, available);
 
   return html`<tr>
     <td>
       <strong>${r.gitlab_username}</strong>
       ${!r.enabled ? html`<span class="chip">disabled</span>` : ''}
       ${snoozed ? html`<span class="chip">snoozed until ${r.snooze_until}</span>` : ''}
+      ${inert.length
+        ? html`<span class="chip urgent"
+            >${inert.join(', ')} not enabled</span
+          >`
+        : ''}
     </td>
     <td>
       <form method="post" action="/recipients/save" class="row">
@@ -53,7 +78,7 @@ function recipientRow(r: RecipientRow, timezone: string, now: Date): SafeHtml {
             ${CHANNEL_LIST.map(
               (spec) =>
                 html`<option value="${spec.id}" ${r.channels?.includes(spec.id) ? 'selected' : ''}>
-                  ${spec.id}
+                  ${spec.id}${available.includes(spec.id) ? '' : ' (off)'}
                 </option>`,
             )}
           </select>
@@ -82,6 +107,9 @@ function recipientRow(r: RecipientRow, timezone: string, now: Date): SafeHtml {
 export function registerRecipients(app: FastifyInstance, ctx: AdminContext): void {
   app.get('/recipients', async (request, reply) => {
     const config = ctx.provider.resolve();
+    // Both conditions matter: a channel switched off in settings and a channel with no
+    // configuration section are equally incapable of delivering anything.
+    const enabledChannels = availableChannels(config);
     const now = new Date();
     const recipients = ctx.repo.listRecipients();
     const known = new Set(recipients.map((r) => r.gitlab_username));
@@ -140,14 +168,18 @@ export function registerRecipients(app: FastifyInstance, ctx: AdminContext): voi
         <p class="hint">
           Default channels: ${config.notifications.channels.join(', ') || 'none'}. Leave a
           recipient's channel selection empty to use those. A channel with no matching address is
-          skipped automatically.
+          skipped automatically. Channels marked <strong>(off)</strong> are not in
+          <a href="/settings">Settings → channels</a>, so nothing is delivered on them however
+          this page is filled in.
         </p>
         <div class="table-wrap">
           <table>
             <thead><tr><th>Username</th><th>Delivery</th><th class="num"></th></tr></thead>
             <tbody>
               ${recipients.length
-                ? recipients.map((r) => raw(recipientRow(r, config.schedule.timezone, now)))
+                ? recipients.map((r) =>
+                    raw(recipientRow(r, config.schedule.timezone, now, enabledChannels)),
+                  )
                 : raw(html`<tr><td colspan="3" class="empty">No recipients yet.</td></tr>`)}
             </tbody>
           </table>

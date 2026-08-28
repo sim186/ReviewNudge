@@ -22,7 +22,46 @@ columns and settings it does not know about rather than removing them.
 
 ---
 
-## 0.2.0 — unreleased
+## 0.2.1 — 2026-08-28
+
+### Added
+
+- **Every digest footer now invites feedback**, pointing at the GitHub issue tracker in
+  all five channels. Recipients never chose to be nudged and mostly have no idea who to
+  tell when it gets something wrong; this gives them somewhere to go. The address comes
+  from `bugs.url` in package.json, so a fork changes it in one place.
+
+### Fixed
+
+- **Waiting time is counted from when a merge request left draft, not from when it was
+  opened.** A merge request that sat as a draft for ten days and went ready two days ago
+  told its reviewer they had kept people waiting for twelve, and crossed the seven-day
+  urgent threshold on the strength of days nobody was waiting. The same anchor now
+  applies to `min_age_hours`: since drafts are skipped, a creation-dated age let one go
+  ready and land in the very next digest, straight past the quiet window the setting
+  exists to provide. GitLab publishes no "left draft at" timestamp, so the transition is
+  read from the system notes; a merge request that was never a draft, or whose ready note
+  has aged out of the notes window, still counts from creation as before.
+- **Digest email now says who sent it.** A `from` configured as a bare address left the
+  sender name to the mail client, which shows the relay mailbox — recipients of the
+  deployed instance saw "gitlab@topseven.cloud" and nothing identifying ReviewNudge. A
+  `from` without a display name is now sent as `ReviewNudge <address>`; one that already
+  has a display name is left exactly as the operator wrote it.
+- **The recipients page no longer accepts delivery settings it will silently ignore.**
+  Filling in a Telegram chat ID and selecting the channel saved cleanly, sent nothing and
+  logged nothing, because a channel missing from `notifications.channels` is dropped
+  before any notifier is consulted. Such channels are now marked `(off)` in the channel
+  picker, and a recipient configured on one carries a warning chip.
+
+### Notes
+
+- Nothing to do when upgrading from 0.2.0. Deployments whose `email.from` is a bare
+  address will start sending as `ReviewNudge <address>`; set a display name explicitly to
+  override it.
+
+---
+
+## 0.2.0 — 2026-08-21
 
 ### Added
 
@@ -50,22 +89,6 @@ columns and settings it does not know about rather than removing them.
   recipient addresses as `{username}@{domain}` rather than listing everyone by hand.
 - The running version is now visible: in the admin panel footer, in the first line of the
   boot log, in the `user-agent` sent to GitLab, and from `nudge version`.
-- **Every digest footer now invites feedback**, pointing at the GitHub issue tracker in
-  all five channels. Recipients never chose to be nudged and mostly have no idea who to
-  tell when it gets something wrong; this gives them somewhere to go. The address comes
-  from `bugs.url` in package.json, so a fork changes it in one place.
-
-### Fixed
-
-- **Waiting time is counted from when a merge request left draft, not from when it was
-  opened.** A merge request that sat as a draft for ten days and went ready two days ago
-  told its reviewer they had kept people waiting for twelve, and crossed the seven-day
-  urgent threshold on the strength of days nobody was waiting. The same anchor now
-  applies to `min_age_hours`: since drafts are skipped, a creation-dated age let one go
-  ready and land in the very next digest, straight past the quiet window the setting
-  exists to provide. GitLab publishes no "left draft at" timestamp, so the transition is
-  read from the system notes; a merge request that was never a draft, or whose ready note
-  has aged out of the notes window, still counts from creation as before.
 
 ### Notes
 
