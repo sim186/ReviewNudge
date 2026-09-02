@@ -14,8 +14,19 @@ export type ReasonKind =
   | 'REVIEW_REQUESTED'
   | 'ASSIGNEE_ACTION'
   | 'UNRESOLVED_THREAD'
+  | 'MENTIONED'
+  | 'PARTICIPANT'
   /** The merge request is unattended and its warnings went to the author. */
   | 'MR_WARNING';
+
+export type MergeRequestRole = 'author' | 'assignee' | 'reviewer' | 'participant';
+
+export interface MergeRequestParticipant {
+  username: string;
+  name: string | null;
+  roles: MergeRequestRole[];
+  bot?: boolean | null;
+}
 
 export interface MergeRequestRef {
   url: string;
@@ -29,6 +40,8 @@ export interface MergeRequestRef {
   labels: string[];
   /** Comment count, paired with lastPushAt to detect movement on a muted merge request. */
   notesCount: number | null;
+  /** Every GitLab participant, annotated with the roles they have on this MR. */
+  participants: MergeRequestParticipant[];
   /**
    * Setup problems with the merge request itself. Carried on the ref rather than on
    * the reason so that every row for this merge request shows them, whoever the row
@@ -81,6 +94,11 @@ function realNotes(notes: GqlNote[] | undefined): GqlNote[] {
   return (notes ?? []).filter((n) => !n.system && n.author?.username);
 }
 
+/** GitLab includes diff notes in the merge request note connection as well as discussions. */
+function topLevelNotes(notes: GqlNote[] | undefined): GqlNote[] {
+  return realNotes(notes).filter((note) => !note.id.includes('/DiffNote/'));
+}
+
 /** Latest non-system note by each user, across the merge request and its threads. */
 export function buildActivityIndex(mr: EnrichedMergeRequest): Map<string, string> {
   const index = new Map<string, string>();
@@ -108,6 +126,41 @@ export function mentionedUsernames(body: string): string[] {
   return [...found];
 }
 
+function participantRoles(mr: EnrichedMergeRequest): MergeRequestParticipant[] {
+  const people = new Map<string, MergeRequestParticipant>();
+
+  const add = (
+    user: { username: string; name: string | null; bot?: boolean | null } | null | undefined,
+    role: MergeRequestRole,
+  ) => {
+    if (!user) return;
+    const current = people.get(user.username);
+    if (current) {
+      if (!current.roles.includes(role)) current.roles.push(role);
+      if (!current.name && user.name) current.name = user.name;
+      if (current.bot === undefined && user.bot === true) current.bot = true;
+      return;
+    }
+    people.set(user.username, {
+      username: user.username,
+      name: user.name,
+      roles: [role],
+      ...(user.bot === true ? { bot: true } : {}),
+    });
+  };
+
+  for (const participant of mr.participants?.nodes ?? []) add(participant, 'participant');
+  add(mr.author, 'author');
+  for (const assignee of mr.assignees?.nodes ?? []) add(assignee, 'assignee');
+  for (const reviewer of mr.reviewers?.nodes ?? []) add(reviewer, 'reviewer');
+
+  const roleOrder: MergeRequestRole[] = ['author', 'assignee', 'reviewer', 'participant'];
+  for (const person of people.values()) {
+    person.roles.sort((a, b) => roleOrder.indexOf(a) - roleOrder.indexOf(b));
+  }
+  return [...people.values()];
+}
+
 function toRef(
   mr: EnrichedMergeRequest,
   lastPushAt: string | null,
@@ -124,6 +177,7 @@ function toRef(
     lastPushAt,
     labels: mr.labels?.nodes.map((l) => l.title) ?? [],
     notesCount: mr.userNotesCount ?? null,
+    participants: participantRoles(mr),
     warnings,
   };
 }
@@ -135,6 +189,8 @@ function unresolvedThreads(mr: EnrichedMergeRequest): GqlDiscussion[] {
 export interface EvaluateOptions {
   rules: Rules;
   userFilter: UserFilterOptions;
+  /** Previous live scan boundary; undefined disables passive participant notifications. */
+  participantActivitySince?: string | null;
 }
 
 /**
@@ -201,6 +257,9 @@ export function evaluateMergeRequest(
     for (const reason of threadReasons(threads, ref, activity)) {
       if (!isExcludedUser(reason.username, null, userFilter)) reasons.push(reason);
     }
+    for (const reason of commentMentionReasons(mr.notes?.nodes, ref, activity)) {
+      if (!isExcludedUser(reason.username, null, userFilter)) reasons.push(reason);
+    }
   }
 
   // Nobody is on the hook, so nobody would ever see this merge request — not even to
@@ -218,6 +277,26 @@ export function evaluateMergeRequest(
         // row saying "nobody is waiting on this" would contradict. The warning box
         // underneath supplies the specifics.
         detail: 'This one is yours to move along',
+      });
+    }
+  }
+
+  if (
+    options.participantActivitySince !== undefined &&
+    (options.participantActivitySince === null || isAfter(mr.updatedAt, options.participantActivitySince))
+  ) {
+    const gitlabParticipants = new Set(
+      (mr.participants?.nodes ?? []).map((participant) => participant.username),
+    );
+    for (const participant of ref.participants) {
+      if (!gitlabParticipants.has(participant.username)) continue;
+      if (isExcludedUser(participant.username, participant.bot, userFilter)) continue;
+      reasons.push({
+        kind: 'PARTICIPANT',
+        username: participant.username,
+        mr: ref,
+        waitingSince: mr.updatedAt,
+        detail: 'New activity in this merge request',
       });
     }
   }
@@ -355,6 +434,38 @@ function assigneeReason(assignee: GqlParticipant, ctx: AssigneeContext): Reason 
 }
 
 // ----------------------------------------------------------------- rule 3
+
+function commentMentionReasons(
+  notes: GqlNote[] | undefined,
+  ref: MergeRequestRef,
+  activity: Map<string, string>,
+): Reason[] {
+  const owed = new Map<string, { count: number; since: string }>();
+
+  for (const note of topLevelNotes(notes)) {
+    for (const username of mentionedUsernames(note.body)) {
+      if (username === note.author?.username) continue;
+      const acted = activity.get(username) ?? null;
+      if (isAfter(acted, note.createdAt)) continue;
+
+      const current = owed.get(username);
+      if (current) {
+        current.count += 1;
+        if (Date.parse(note.createdAt) < Date.parse(current.since)) current.since = note.createdAt;
+      } else {
+        owed.set(username, { count: 1, since: note.createdAt });
+      }
+    }
+  }
+
+  return [...owed.entries()].map(([username, info]) => ({
+    kind: 'MENTIONED' as const,
+    username,
+    mr: ref,
+    waitingSince: info.since,
+    detail: `You were mentioned in ${info.count} merge request ${info.count === 1 ? 'comment' : 'comments'}`,
+  }));
+}
 
 function threadReasons(
   threads: GqlDiscussion[],

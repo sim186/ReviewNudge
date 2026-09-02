@@ -63,6 +63,8 @@ export interface GqlMergeRequest {
   approvedBy: { nodes: GqlUser[] } | null;
   assignees: { nodes: GqlParticipant[] } | null;
   reviewers: { nodes: GqlParticipant[] } | null;
+  /** Everyone GitLab considers part of the merge request conversation. */
+  participants?: { nodes: GqlUser[] } | null;
   commits: { nodes: { committedDate: string | null; authoredDate: string | null }[] } | null;
   notes?: { nodes: GqlNote[] } | null;
   discussions?: { nodes: GqlDiscussion[] } | null;

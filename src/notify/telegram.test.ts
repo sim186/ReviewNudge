@@ -22,6 +22,7 @@ function digest(chatId: string | null = '987654321', title = 'Fix the thing'): D
     lastPushAt: '2026-08-05T00:00:00Z',
     labels: [],
     notesCount: 0,
+    participants: [],
     warnings: [],
   };
   return {

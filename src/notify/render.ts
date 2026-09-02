@@ -1,5 +1,5 @@
 import type { Digest, DigestItem } from '../domain/digest.js';
-import type { ReasonKind } from '../domain/reasons.js';
+import type { MergeRequestParticipant, ReasonKind } from '../domain/reasons.js';
 import { ISSUES_URL } from '../version.js';
 
 /** Links that let the recipient act on their own notifications. */
@@ -49,6 +49,8 @@ const KIND_LABEL: Record<ReasonKind, string> = {
   REVIEW_REQUESTED: 'Review',
   ASSIGNEE_ACTION: 'Assignee',
   UNRESOLVED_THREAD: 'Thread',
+  MENTIONED: 'Mention',
+  PARTICIPANT: 'Participant',
   MR_WARNING: 'Unattended',
 };
 
@@ -62,6 +64,35 @@ const WARNING_HEADING = 'Needs attention';
 
 function warningDetails(item: DigestItem): string[] {
   return item.mr.warnings.map((w) => w.detail);
+}
+
+function participantSummary(participants: MergeRequestParticipant[]): string {
+  return participants
+    .map((person) => {
+      const name = person.name?.trim() || person.username;
+      return `${name} (@${person.username}) — ${person.roles.join(', ')}`;
+    })
+    .join('; ');
+}
+
+function participantDetails(item: DigestItem): string | null {
+  return item.mr.participants.length > 0 ? participantSummary(item.mr.participants) : null;
+}
+
+function awarenessOnly(digest: Digest): boolean {
+  return (
+    digest.items.length > 0 &&
+    digest.items.every((item) => item.kinds.every((kind) => kind === 'PARTICIPANT'))
+  );
+}
+
+function notificationHeading(digest: Digest): string {
+  if (awarenessOnly(digest)) {
+    return `${digest.totalItems} merge request${digest.totalItems === 1 ? '' : 's'} had new activity`;
+  }
+  return digest.totalItems === 1
+    ? '1 merge request is waiting for your input'
+    : `${digest.totalItems} merge requests are waiting for your input`;
 }
 
 export function escapeHtml(value: string): string {
@@ -104,6 +135,10 @@ export function renderSubject(template: string, digest: Digest): string {
     .replace(/\{username\}/g, digest.username)
     .replace(/\{plural\}/g, count === 1 ? '' : 's');
 
+  if (template === '{count} merge requests are waiting for you' && awarenessOnly(digest)) {
+    return notificationHeading(digest);
+  }
+
   // The stock template reads awkwardly at exactly one item; fix that rather than
   // making every operator write a conditional into their config.
   if (count === 1 && rendered === '1 merge requests are waiting for you') {
@@ -128,11 +163,7 @@ function truncationNote(digest: Digest): string | null {
 
 function renderText(digest: Digest, links?: SelfServiceLinks | null): string {
   const lines: string[] = [];
-  lines.push(
-    digest.totalItems === 1
-      ? '1 merge request is waiting for your input:'
-      : `${digest.totalItems} merge requests are waiting for your input:`,
-  );
+  lines.push(`${notificationHeading(digest)}:`);
   lines.push('');
 
   for (const item of digest.items) {
@@ -141,6 +172,8 @@ function renderText(digest: Digest, links?: SelfServiceLinks | null): string {
       `  ${item.mr.projectPath} !${item.mr.iid} — waiting ${waitingPhrase(item.waitingDays)}`,
     );
     lines.push(`  ${item.detail}`);
+    const participants = participantDetails(item);
+    if (participants) lines.push(`  MR participants: ${participants}`);
     const warnings = warningDetails(item);
     if (warnings.length > 0) {
       lines.push(`  ${WARNING_HEADING}:`);
@@ -209,6 +242,13 @@ function renderRow(item: DigestItem, links?: SelfServiceLinks | null): string {
           )} !${escapeHtml(item.mr.iid)}</div>
           <div style="margin-top:6px;">${chips}</div>
           <div style="color:#3a4a5e;font-size:13px;margin-top:6px;">${escapeHtml(item.detail)}</div>
+          ${
+            participantDetails(item)
+              ? `<div style="color:#6b7684;font-size:12px;margin-top:6px;"><strong>MR participants:</strong> ${escapeHtml(
+                  participantDetails(item)!,
+                )}</div>`
+              : ''
+          }
           ${renderWarningBox(item)}
           ${
             links
@@ -227,10 +267,7 @@ function renderRow(item: DigestItem, links?: SelfServiceLinks | null): string {
 }
 
 function renderHtml(digest: Digest, links?: SelfServiceLinks | null): string {
-  const heading =
-    digest.totalItems === 1
-      ? '1 merge request is waiting for your input'
-      : `${digest.totalItems} merge requests are waiting for your input`;
+  const heading = notificationHeading(digest);
 
   const note = truncationNote(digest);
 
@@ -301,6 +338,18 @@ function cardItemBlocks(item: DigestItem, links?: SelfServiceLinks | null): Reco
               wrap: true,
               size: 'Small',
             },
+            ...(participantDetails(item)
+              ? [
+                  {
+                    type: 'TextBlock',
+                    text: escapeCardText(`MR participants: ${participantDetails(item)}`),
+                    wrap: true,
+                    size: 'Small',
+                    isSubtle: true,
+                    spacing: 'Small',
+                  },
+                ]
+              : []),
             ...(warningDetails(item).length > 0
               ? [
                   {
@@ -353,10 +402,7 @@ function buildCard(
   items: DigestItem[],
   links?: SelfServiceLinks | null,
 ): Record<string, unknown> {
-  const heading =
-    digest.totalItems === 1
-      ? '1 merge request is waiting for your input'
-      : `${digest.totalItems} merge requests are waiting for your input`;
+  const heading = notificationHeading(digest);
 
   const body: Record<string, unknown>[] = [
     { type: 'TextBlock', text: heading, weight: 'Bolder', size: 'Medium', wrap: true },
@@ -471,10 +517,7 @@ function renderSlackBlocks(
   digest: Digest,
   links?: SelfServiceLinks | null,
 ): Record<string, unknown>[] {
-  const heading =
-    digest.totalItems === 1
-      ? '1 merge request is waiting for your input'
-      : `${digest.totalItems} merge requests are waiting for your input`;
+  const heading = notificationHeading(digest);
 
   const blocks: Record<string, unknown>[] = [
     { type: 'header', text: { type: 'plain_text', text: heading, emoji: false } },
@@ -493,12 +536,16 @@ function renderSlackBlocks(
       warnings.length > 0
         ? `\n> *${escapeSlackText(WARNING_HEADING)}:* ${escapeSlackText(warnings.join('; '))}`
         : '';
+    const participants = participantDetails(item);
+    const participantLine = participants
+      ? `\n_${escapeSlackText(`MR participants: ${participants}`)}_`
+      : '';
 
     blocks.push({
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `*${slackLink(item.mr.url, item.mr.title)}*\n${escapeSlackText(item.detail)}${warningLine}`,
+        text: `*${slackLink(item.mr.url, item.mr.title)}*\n${escapeSlackText(item.detail)}${participantLine}${warningLine}`,
       },
     });
     blocks.push({
@@ -533,10 +580,7 @@ export function escapeTelegramHtml(value: string): string {
 }
 
 function renderTelegramHtml(digest: Digest, links?: SelfServiceLinks | null): string {
-  const heading =
-    digest.totalItems === 1
-      ? '<b>1 merge request is waiting for your input</b>'
-      : `<b>${digest.totalItems} merge requests are waiting for your input</b>`;
+  const heading = `<b>${escapeTelegramHtml(notificationHeading(digest))}</b>`;
 
   const lines: string[] = [heading, ''];
 
@@ -549,6 +593,10 @@ function renderTelegramHtml(digest: Digest, links?: SelfServiceLinks | null): st
       `  <i>${escapeTelegramHtml(item.mr.projectPath)} !${escapeTelegramHtml(item.mr.iid)} · ${escapeTelegramHtml(kinds)} · waiting ${waitingPhrase(item.waitingDays)}</i>`,
     );
     lines.push(`  ${escapeTelegramHtml(item.detail)}`);
+    const participants = participantDetails(item);
+    if (participants) {
+      lines.push(`  <i>${escapeTelegramHtml(`MR participants: ${participants}`)}</i>`);
+    }
     const warnings = warningDetails(item);
     if (warnings.length > 0) {
       lines.push(

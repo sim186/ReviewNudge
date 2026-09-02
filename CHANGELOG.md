@@ -22,6 +22,16 @@ columns and settings it does not know about rather than removing them.
 
 ---
 
+## 0.2.2 — 2026-09-02
+
+### Added
+
+- **Participant awareness notifications.** Every current MR participant receives a digest
+  item when the merge request has new activity since the last live run. Notifications list
+  each participant and their roles; passive participants are not repeated without changes.
+- **Top-level comment mentions.** Users mentioned in ordinary MR comments are now included
+  when they have not replied afterward.
+
 ## 0.2.1 — 2026-08-28
 
 ### Added

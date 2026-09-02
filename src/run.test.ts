@@ -159,6 +159,42 @@ describe('executeRun', () => {
     expect(audit.list({ action: 'notification.send' })).toHaveLength(1);
   });
 
+  it('emails all participants once when an MR has new activity', async () => {
+    const provider = harness();
+    repo.upsertRecipient({
+      gitlab_username: 'bob',
+      email: 'bob@example.com',
+      teams_upn: null,
+      channels: null,
+      snooze_until: null,
+    });
+    const notifier = new RecordingNotifier('email');
+    const activeMr = mr('1', {
+      reviewers: { nodes: [] },
+      participants: {
+        nodes: [
+          { username: 'alice', name: 'Alice' },
+          { username: 'bob', name: 'Bob' },
+        ],
+      },
+    });
+    const run = (now: Date) =>
+      executeRun(provider, repo, audit, {
+        trigger: 'cli',
+        now,
+        logger: silent,
+        clientFactory: () => clientFor([activeMr]),
+        notifierFactory: () => new Map([['email', notifier]]),
+      });
+
+    await run(NOW);
+    expect(notifier.sent.map((digest) => digest.username)).toEqual(['alice', 'bob']);
+
+    notifier.sent.length = 0;
+    await run(new Date(NOW.getTime() + 60_000));
+    expect(notifier.sent).toHaveLength(0);
+  });
+
   it('records the run and a snapshot the panel can read', async () => {
     const provider = harness();
     await executeRun(provider, repo, audit, {

@@ -25,6 +25,7 @@ function ref(overrides: Partial<MergeRequestRef> = {}): MergeRequestRef {
     lastPushAt: '2026-08-05T00:00:00Z',
     labels: [],
     notesCount: 3,
+    participants: [],
     warnings: [],
     ...overrides,
   };

@@ -39,14 +39,15 @@ you and for how long.
 
 ## How it decides who is blocking
 
-For every open, non-draft merge request in the configured groups, three rules run. Each can
-be switched off independently.
+For every open, non-draft merge request in the configured groups, three blocking rules and
+one participant-awareness rule run. Each blocking rule can be switched off independently.
 
 | Rule | Someone is notified when |
 | --- | --- |
 | **Reviewer has not approved** | They are a reviewer, are not in `approvedBy`, and their review state is `UNREVIEWED`, `REVIEW_STARTED`, or `UNAPPROVED`. |
 | **Assignee has something to do** | They are an assignee and either a reviewer requested changes, or the merge request is fully approved and nobody merged it, or there are unresolved threads they did not open. |
-| **Unresolved threads** | They opened a thread that is still unresolved and somebody else had the last word, or they were @-mentioned and have not replied since. |
+| **Threads and mentions** | They opened a thread that is still unresolved and somebody else had the last word, or they were @-mentioned in a thread or merge request comment and have not replied since. |
+| **Participant awareness** | Every current GitLab participant gets the MR when it has activity since the last live notification run. |
 
 Two deliberate refinements:
 
@@ -55,6 +56,12 @@ Two deliberate refinements:
   the wait measured from that push.
 - **`require_activity_since_push`** (on by default) drops anyone who has already acted since
   the most recent push, so people are not nagged about work they have just done.
+- @-mentions in ordinary merge request comments are tracked alongside unresolved discussion
+  mentions. Every notification also lists the MR participants and their roles (author,
+  assignee, reviewer, or participant).
+- Participant-awareness notifications use the last live run as their activity boundary, so
+  dry-runs do not suppress a later email. Passive participants are not emailed again until
+  the MR changes.
 - **Time as a draft does not count.** Both the wait shown on a row and `min_age_hours` are
   measured from the moment the merge request left draft, so ten days of drafting are not
   reported as ten days of somebody sitting on a review.

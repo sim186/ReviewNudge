@@ -44,7 +44,7 @@ schedule:
 rules:
   reviewer_not_approved: true # user is a reviewer and has not approved
   assignee_action_pending: true # user is an assignee and something needs them
-  unresolved_threads: true # unresolved threads they opened or were mentioned in
+  unresolved_threads: true # unresolved threads and MR comments they are mentioned in
   require_activity_since_push: true # skip people who already acted since the last push
   min_age_hours: 12 # ignore merge requests younger than this
   ignore_draft: true

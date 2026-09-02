@@ -1,6 +1,6 @@
 {
   "name": "review-nudge",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Nudges GitLab users about merge requests waiting for their input, over email, Teams, Slack or Telegram.",
   "repository": {
     "type": "git",

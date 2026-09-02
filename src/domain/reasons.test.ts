@@ -65,9 +65,13 @@ function buildMr(overrides: Partial<EnrichedMergeRequest> = {}): EnrichedMergeRe
  * blocking rules. Most fixtures have no reviewer, which would otherwise hand every
  * one of them an extra MR_WARNING row. warnings.test.ts covers it instead.
  */
-const options = (rules: Partial<ReturnType<typeof rulesSchema.parse>> = {}) => ({
+const options = (
+  rules: Partial<ReturnType<typeof rulesSchema.parse>> = {},
+  participantActivitySince?: string | null,
+) => ({
   rules: rulesSchema.parse({ notify_author_of_warnings: false, ...rules }),
   userFilter: { excludedUsers: [], excludeBots: true },
+  ...(participantActivitySince !== undefined ? { participantActivitySince } : {}),
 });
 
 const kinds = (mr: EnrichedMergeRequest, opts = options()) =>
@@ -349,6 +353,74 @@ describe('rule 3: unresolved threads', () => {
     expect(reason?.detail).toMatch(/mentioned in 1 unresolved thread/);
   });
 
+  it('flags a mentioned user in a top-level merge request comment', () => {
+    const mr = buildMr({
+      notes: { nodes: [note('alice', '2026-08-04T00:00:00Z', 'FYI @carol')] },
+    });
+    const reason = evaluateMergeRequest(mr, options()).find((r) => r.username === 'carol');
+    expect(reason).toMatchObject({ username: 'carol', kind: 'MENTIONED' });
+    expect(reason?.detail).toMatch(/mentioned in 1 merge request comment/);
+  });
+
+  it('does not count a diff note twice as a top-level mention', () => {
+    const diffNote = {
+      ...note('alice', '2026-08-04T00:00:00Z', 'what do you think @carol?'),
+      id: 'gid://gitlab/DiffNote/1',
+    };
+    const mr = buildMr({
+      notes: { nodes: [diffNote] },
+      discussions: { nodes: [thread([diffNote])] },
+    });
+    expect(evaluateMergeRequest(mr, options()).filter((r) => r.username === 'carol')).toHaveLength(1);
+    expect(evaluateMergeRequest(mr, options()).find((r) => r.username === 'carol')?.kind).toBe(
+      'UNRESOLVED_THREAD',
+    );
+  });
+
+  it('notifies every participant when the merge request has new activity', () => {
+    const mr = buildMr({
+      reviewers: { nodes: [] },
+      participants: { nodes: [{ username: 'carol', name: 'Carol' }] },
+    });
+    const reason = evaluateMergeRequest(mr, options({}, '2026-08-02T00:00:00Z')).find(
+      (r) => r.username === 'carol',
+    );
+    expect(reason).toMatchObject({ username: 'carol', kind: 'PARTICIPANT' });
+    expect(reason?.detail).toBe('New activity in this merge request');
+  });
+
+  it('does not notify passive participants when nothing changed since the last run', () => {
+    const mr = buildMr({
+      reviewers: { nodes: [] },
+      participants: { nodes: [{ username: 'carol', name: 'Carol' }] },
+    });
+    expect(evaluateMergeRequest(mr, options({}, PUSH))).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ username: 'carol', kind: 'PARTICIPANT' })]),
+    );
+  });
+
+  it('carries the GitLab participant roles on every reason', () => {
+    const mr = buildMr({
+      assignees: { nodes: [participant('assignee')] },
+      reviewers: { nodes: [participant('reviewer', 'UNREVIEWED')] },
+      participants: {
+        nodes: [
+          { username: 'author', name: 'Author' },
+          { username: 'assignee', name: 'Assignee' },
+          { username: 'reviewer', name: 'Reviewer' },
+          { username: 'commenter', name: 'Commenter' },
+        ],
+      },
+    });
+    const reason = evaluateMergeRequest(mr, options()).find((r) => r.username === 'reviewer');
+    expect(reason?.mr.participants).toEqual([
+      { username: 'author', name: 'Author', roles: ['author', 'participant'] },
+      { username: 'assignee', name: 'Assignee', roles: ['assignee', 'participant'] },
+      { username: 'reviewer', name: 'Reviewer', roles: ['reviewer', 'participant'] },
+      { username: 'commenter', name: 'Commenter', roles: ['participant'] },
+    ]);
+  });
+
   it('lets a mentioned user off once they reply', () => {
     const mr = buildMr({
       discussions: {
@@ -357,6 +429,18 @@ describe('rule 3: unresolved threads', () => {
             note('alice', '2026-08-04T00:00:00Z', '@carol thoughts?'),
             note('carol', '2026-08-05T00:00:00Z', 'looks fine'),
           ]),
+        ],
+      },
+    });
+    expect(evaluateMergeRequest(mr, options()).find((r) => r.username === 'carol')).toBeUndefined();
+  });
+
+  it('lets a mentioned user off after they reply in a top-level comment', () => {
+    const mr = buildMr({
+      notes: {
+        nodes: [
+          note('alice', '2026-08-04T00:00:00Z', 'FYI @carol'),
+          note('carol', '2026-08-05T00:00:00Z', 'I will check this'),
         ],
       },
     });

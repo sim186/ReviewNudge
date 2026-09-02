@@ -185,6 +185,13 @@ describe('GitLabClient', () => {
     expect(body.query).not.toMatch(/^\s*description$/m);
   });
 
+  it('fetches the GitLab participant list', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(groupPage([])));
+    await client(fetchImpl as unknown as typeof fetch).fetchGroupMergeRequests('eng', true);
+    const body = JSON.parse((fetchImpl.mock.calls[0] as [string, RequestInit])[1].body as string);
+    expect(body.query).toMatch(/participants\(first: 100\)/);
+  });
+
   it('asks for descriptions when told to', async () => {
     const fetchImpl = vi.fn(async () => jsonResponse(groupPage([])));
     await client(fetchImpl as unknown as typeof fetch, {

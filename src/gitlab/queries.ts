@@ -99,6 +99,7 @@ query GroupMergeRequests(
         approvedBy { nodes { username } }
         assignees { nodes { ${participantFields(caps)} } }
         reviewers { nodes { ${participantFields(caps)} } }
+        participants(first: 100) { nodes { username name bot } }
         ${caps.lastCommits ? 'commits(last: 1) { nodes { committedDate authoredDate } }' : ''}
         notes(last: $notes) {
           nodes { id body createdAt system author { username } }

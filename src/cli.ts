@@ -252,6 +252,7 @@ async function commandTestNotify(args: Args): Promise<number> {
           lastPushAt: now.toISOString(),
           labels: [],
           notesCount: 0,
+          participants: [],
           // Carried in the sample so a test message also proves the warning box
           // survives the channel being tested.
           warnings: [

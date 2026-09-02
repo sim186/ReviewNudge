@@ -147,6 +147,8 @@ export async function executeRun(
     };
   }
 
+  const previousNotificationRun = repo.latestNotificationRun();
+  const participantActivitySince = previousNotificationRun?.finished_at ?? null;
   const runId = repo.startRun(options.trigger, dryRun);
   const client =
     options.clientFactory?.(config) ??
@@ -205,7 +207,11 @@ export async function executeRun(
     // -------------------------------------------------------------- reason
     const userFilter = { excludedUsers: config.exclude.users, excludeBots: config.exclude.bots };
     const allReasons: Reason[] = enriched.flatMap((mr) =>
-      evaluateMergeRequest(mr, { rules: config.rules, userFilter }),
+      evaluateMergeRequest(mr, {
+        rules: config.rules,
+        userFilter,
+        participantActivitySince,
+      }),
     );
 
     // --------------------------------------------------------- personal mutes

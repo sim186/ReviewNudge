@@ -24,6 +24,7 @@ function item(overrides: Partial<DigestItem> = {}): DigestItem {
       lastPushAt: '2026-08-05T00:00:00Z',
       labels: [],
       notesCount: 0,
+      participants: [],
       warnings: [],
     },
     kinds: ['REVIEW_REQUESTED'] as ReasonKind[],
@@ -145,6 +146,46 @@ describe('renderDigest', () => {
     expect(out.text).toContain('https://gitlab.example.com/a/b/-/merge_requests/1');
     expect(out.html).toContain('<a href="https://gitlab.example.com/a/b/-/merge_requests/1"');
     expect(out.card.attachments[0]?.contentType).toBe('application/vnd.microsoft.card.adaptive');
+  });
+
+  it('uses an activity heading for an awareness-only digest', () => {
+    const awareness = item({
+      kinds: ['PARTICIPANT'],
+      detail: 'New activity in this merge request',
+    });
+    const out = renderDigest(digest({ items: [awareness] }), TEMPLATE);
+    expect(out.subject).toBe('1 merge request had new activity');
+    expect(out.text).toContain('1 merge request had new activity');
+    expect(out.html).toContain('1 merge request had new activity');
+    expect(out.telegramHtml).toContain('1 merge request had new activity');
+    expect(JSON.stringify(out.card)).toContain('1 merge request had new activity');
+    expect(JSON.stringify(out.slackBlocks)).toContain('1 merge request had new activity');
+  });
+
+  it('shows every MR participant with their roles in each notification', () => {
+    const out = renderDigest(
+      digest({
+        items: [
+          item({
+            mr: {
+              ...item().mr,
+              participants: [
+                { username: 'author', name: 'Author', roles: ['author', 'participant'] },
+                { username: 'reviewer', name: 'Reviewer', roles: ['reviewer', 'participant'] },
+              ],
+            },
+          }),
+        ],
+      }),
+      TEMPLATE,
+    );
+    const outputs = [out.text, out.html, out.telegramHtml, JSON.stringify(out.card), JSON.stringify(out.slackBlocks)];
+    for (const output of outputs) {
+      expect(output).toContain('Author (@author)');
+      expect(output).toContain('author, participant');
+      expect(output).toContain('Reviewer (@reviewer)');
+      expect(output).toContain('reviewer, participant');
+    }
   });
 
   it('escapes a hostile merge request title in the HTML body', () => {
