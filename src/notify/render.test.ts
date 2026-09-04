@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Digest, DigestItem } from '../domain/digest.js';
 import type { ReasonKind } from '../domain/reasons.js';
-import { ISSUES_URL } from '../version.js';
+import { ISSUES_URL, NOTIFICATION_HELP_URL } from '../version.js';
 import {
   escapeCardText,
   escapeHtml,
@@ -70,6 +70,8 @@ describe('feedback footer', () => {
     for (const output of [rendered.text, rendered.html, rendered.telegramHtml, card, slack]) {
       expect(output).toContain(ISSUES_URL);
       expect(output).toContain('Open an issue');
+      expect(output).toContain(NOTIFICATION_HELP_URL);
+      expect(output).toContain('Why am I getting this notification?');
     }
   });
 
@@ -146,20 +148,6 @@ describe('renderDigest', () => {
     expect(out.text).toContain('https://gitlab.example.com/a/b/-/merge_requests/1');
     expect(out.html).toContain('<a href="https://gitlab.example.com/a/b/-/merge_requests/1"');
     expect(out.card.attachments[0]?.contentType).toBe('application/vnd.microsoft.card.adaptive');
-  });
-
-  it('uses an activity heading for an awareness-only digest', () => {
-    const awareness = item({
-      kinds: ['PARTICIPANT'],
-      detail: 'New activity in this merge request',
-    });
-    const out = renderDigest(digest({ items: [awareness] }), TEMPLATE);
-    expect(out.subject).toBe('1 merge request had new activity');
-    expect(out.text).toContain('1 merge request had new activity');
-    expect(out.html).toContain('1 merge request had new activity');
-    expect(out.telegramHtml).toContain('1 merge request had new activity');
-    expect(JSON.stringify(out.card)).toContain('1 merge request had new activity');
-    expect(JSON.stringify(out.slackBlocks)).toContain('1 merge request had new activity');
   });
 
   it('shows every MR participant with their roles in each notification', () => {

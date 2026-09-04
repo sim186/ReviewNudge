@@ -159,7 +159,7 @@ describe('executeRun', () => {
     expect(audit.list({ action: 'notification.send' })).toHaveLength(1);
   });
 
-  it('emails all participants once when an MR has new activity', async () => {
+  it('does not email passive participants when an MR has new activity', async () => {
     const provider = harness();
     repo.upsertRecipient({
       gitlab_username: 'bob',
@@ -178,20 +178,16 @@ describe('executeRun', () => {
         ],
       },
     });
-    const run = (now: Date) =>
-      executeRun(provider, repo, audit, {
-        trigger: 'cli',
-        now,
-        logger: silent,
-        clientFactory: () => clientFor([activeMr]),
-        notifierFactory: () => new Map([['email', notifier]]),
-      });
 
-    await run(NOW);
-    expect(notifier.sent.map((digest) => digest.username)).toEqual(['alice', 'bob']);
+    const summary = await executeRun(provider, repo, audit, {
+      trigger: 'cli',
+      now: NOW,
+      logger: silent,
+      clientFactory: () => clientFor([activeMr]),
+      notifierFactory: () => new Map([['email', notifier]]),
+    });
 
-    notifier.sent.length = 0;
-    await run(new Date(NOW.getTime() + 60_000));
+    expect(summary.digestsSent).toBe(0);
     expect(notifier.sent).toHaveLength(0);
   });
 

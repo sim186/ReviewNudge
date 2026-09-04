@@ -15,7 +15,6 @@ export type ReasonKind =
   | 'ASSIGNEE_ACTION'
   | 'UNRESOLVED_THREAD'
   | 'MENTIONED'
-  | 'PARTICIPANT'
   /** The merge request is unattended and its warnings went to the author. */
   | 'MR_WARNING';
 
@@ -189,8 +188,6 @@ function unresolvedThreads(mr: EnrichedMergeRequest): GqlDiscussion[] {
 export interface EvaluateOptions {
   rules: Rules;
   userFilter: UserFilterOptions;
-  /** Previous live scan boundary; undefined disables passive participant notifications. */
-  participantActivitySince?: string | null;
 }
 
 /**
@@ -277,26 +274,6 @@ export function evaluateMergeRequest(
         // row saying "nobody is waiting on this" would contradict. The warning box
         // underneath supplies the specifics.
         detail: 'This one is yours to move along',
-      });
-    }
-  }
-
-  if (
-    options.participantActivitySince !== undefined &&
-    (options.participantActivitySince === null || isAfter(mr.updatedAt, options.participantActivitySince))
-  ) {
-    const gitlabParticipants = new Set(
-      (mr.participants?.nodes ?? []).map((participant) => participant.username),
-    );
-    for (const participant of ref.participants) {
-      if (!gitlabParticipants.has(participant.username)) continue;
-      if (isExcludedUser(participant.username, participant.bot, userFilter)) continue;
-      reasons.push({
-        kind: 'PARTICIPANT',
-        username: participant.username,
-        mr: ref,
-        waitingSince: mr.updatedAt,
-        detail: 'New activity in this merge request',
       });
     }
   }

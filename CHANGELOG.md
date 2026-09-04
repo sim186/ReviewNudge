@@ -22,6 +22,18 @@ columns and settings it does not know about rather than removing them.
 
 ---
 
+## 0.2.3 — 2026-09-04
+
+### Fixed
+
+- **Passive participants are no longer notified just because an MR changed.** ReviewNudge
+  now sends only action-based notifications: pending reviews go to reviewers, requested
+  changes and unresolved replies go to authors or assignees, and direct mentions or thread
+  replies go to the people involved. The participant list remains context on each row.
+- **Notification messages now link to the recipient-facing notification logic guide.**
+
+---
+
 ## 0.2.2 — 2026-09-02
 
 ### Added

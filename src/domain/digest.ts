@@ -55,7 +55,6 @@ const KIND_ORDER: ReasonKind[] = [
   'ASSIGNEE_ACTION',
   'UNRESOLVED_THREAD',
   'MENTIONED',
-  'PARTICIPANT',
   // Last: a warning row is the least urgent thing in a digest, because nobody is
   // actually blocked by it.
   'MR_WARNING',

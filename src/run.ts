@@ -147,8 +147,6 @@ export async function executeRun(
     };
   }
 
-  const previousNotificationRun = repo.latestNotificationRun();
-  const participantActivitySince = previousNotificationRun?.finished_at ?? null;
   const runId = repo.startRun(options.trigger, dryRun);
   const client =
     options.clientFactory?.(config) ??
@@ -210,7 +208,6 @@ export async function executeRun(
       evaluateMergeRequest(mr, {
         rules: config.rules,
         userFilter,
-        participantActivitySince,
       }),
     );
 

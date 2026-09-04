@@ -9,7 +9,6 @@ const KIND_LABEL: Record<string, string> = {
   ASSIGNEE_ACTION: 'Assignee',
   UNRESOLVED_THREAD: 'Thread',
   MENTIONED: 'Mention',
-  PARTICIPANT: 'Participant',
   MR_WARNING: 'Unattended',
 };
 

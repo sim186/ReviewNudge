@@ -41,6 +41,10 @@ export const VERSION =
  */
 export const ISSUES_URL = bugsUrl(pkg.bugs) ?? 'https://github.com/sim186/ReviewNudge/issues';
 
+/** Explains which signals cause a recipient to receive a digest item. */
+export const NOTIFICATION_HELP_URL =
+  'https://github.com/sim186/ReviewNudge/blob/main/docs/notification-logic.md';
+
 /**
  * What GitLab sees in its API logs. A self-hosted instance administrator looking at
  * unfamiliar traffic can find out what it is and which build is making it.

@@ -434,18 +434,6 @@ export class Repo {
     return row ? toRun(row) : null;
   }
 
-  /** Latest completed live run; dry-runs must not suppress a later real notification. */
-  latestNotificationRun(): RunRow | null {
-    const row = this.db
-      .prepare(
-        `SELECT * FROM runs
-         WHERE finished_at IS NOT NULL AND status IN ('ok', 'partial') AND dry_run = 0
-         ORDER BY id DESC LIMIT 1`,
-      )
-      .get() as RawRun | undefined;
-    return row ? toRun(row) : null;
-  }
-
   recentRuns(limit = 20): RunRow[] {
     const rows = this.db
       .prepare('SELECT * FROM runs ORDER BY id DESC LIMIT ?')

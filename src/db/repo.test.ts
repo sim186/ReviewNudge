@@ -89,14 +89,6 @@ describe('Repo', () => {
     expect(repo.latestCompletedRun()?.id).toBe(done);
   });
 
-  it('uses the latest live run as the participant activity boundary', () => {
-    const live = repo.startRun('schedule', false);
-    repo.finishRun(live, { status: 'ok' });
-    const dry = repo.startRun('manual', true);
-    repo.finishRun(dry, { status: 'ok' });
-    expect(repo.latestNotificationRun()?.id).toBe(live);
-  });
-
   it('replaces the snapshot atomically and prunes older ones', () => {
     const first = repo.startRun('cli', false);
     repo.replaceSnapshot(first, [

@@ -1,6 +1,6 @@
 import type { Digest, DigestItem } from '../domain/digest.js';
 import type { MergeRequestParticipant, ReasonKind } from '../domain/reasons.js';
-import { ISSUES_URL } from '../version.js';
+import { ISSUES_URL, NOTIFICATION_HELP_URL } from '../version.js';
 
 /** Links that let the recipient act on their own notifications. */
 export interface SelfServiceLinks {
@@ -50,7 +50,6 @@ const KIND_LABEL: Record<ReasonKind, string> = {
   ASSIGNEE_ACTION: 'Assignee',
   UNRESOLVED_THREAD: 'Thread',
   MENTIONED: 'Mention',
-  PARTICIPANT: 'Participant',
   MR_WARNING: 'Unattended',
 };
 
@@ -79,17 +78,7 @@ function participantDetails(item: DigestItem): string | null {
   return item.mr.participants.length > 0 ? participantSummary(item.mr.participants) : null;
 }
 
-function awarenessOnly(digest: Digest): boolean {
-  return (
-    digest.items.length > 0 &&
-    digest.items.every((item) => item.kinds.every((kind) => kind === 'PARTICIPANT'))
-  );
-}
-
 function notificationHeading(digest: Digest): string {
-  if (awarenessOnly(digest)) {
-    return `${digest.totalItems} merge request${digest.totalItems === 1 ? '' : 's'} had new activity`;
-  }
   return digest.totalItems === 1
     ? '1 merge request is waiting for your input'
     : `${digest.totalItems} merge requests are waiting for your input`;
@@ -134,10 +123,6 @@ export function renderSubject(template: string, digest: Digest): string {
     .replace(/\{count\}/g, String(count))
     .replace(/\{username\}/g, digest.username)
     .replace(/\{plural\}/g, count === 1 ? '' : 's');
-
-  if (template === '{count} merge requests are waiting for you' && awarenessOnly(digest)) {
-    return notificationHeading(digest);
-  }
 
   // The stock template reads awkwardly at exactly one item; fix that rather than
   // making every operator write a conditional into their config.
@@ -191,6 +176,8 @@ function renderText(digest: Digest, links?: SelfServiceLinks | null): string {
     lines.push(`Mute one of these, or pause everything: ${links.manage}`);
     lines.push('');
   }
+  lines.push(`Why am I getting this notification? ${NOTIFICATION_HELP_URL}`);
+  lines.push('');
   lines.push('— ReviewNudge');
   lines.push(`${FEEDBACK_PROMPT} ${FEEDBACK_LINK}: ${ISSUES_URL}`);
   return lines.join('\n');
@@ -295,6 +282,8 @@ function renderHtml(digest: Digest, links?: SelfServiceLinks | null): string {
               ? `<a href="${escapeHtml(links.manage)}" style="color:#6b7684;">Mute one of these, or pause everything.</a>`
               : 'To stop these, ask an administrator to snooze you or mute a merge request.'
           }
+          <br />
+          <a href="${escapeHtml(NOTIFICATION_HELP_URL)}" style="color:#6b7684;">Why am I getting this notification?</a>
           <br />
           ${escapeHtml(FEEDBACK_PROMPT)}
           <a href="${escapeHtml(ISSUES_URL)}" style="color:#6b7684;">${escapeHtml(FEEDBACK_LINK)}</a>.
@@ -424,7 +413,7 @@ function buildCard(
   // requests, and this belongs quietly at the bottom.
   body.push({
     type: 'TextBlock',
-    text: `${FEEDBACK_PROMPT} [${FEEDBACK_LINK}](${ISSUES_URL})`,
+    text: `Why am I getting this notification? [Read the notification logic](${NOTIFICATION_HELP_URL})\n${FEEDBACK_PROMPT} [${FEEDBACK_LINK}](${ISSUES_URL})`,
     wrap: true,
     isSubtle: true,
     size: 'Small',
@@ -563,6 +552,7 @@ function renderSlackBlocks(
   const footer: string[] = [];
   if (hidden > 0) footer.push(`_${hidden} more not shown._`);
   if (links) footer.push(slackLink(links.manage, 'Mute one of these, or pause everything'));
+  footer.push(slackLink(NOTIFICATION_HELP_URL, 'Why am I getting this notification?'));
   footer.push(`${escapeSlackText(FEEDBACK_PROMPT)} ${slackLink(ISSUES_URL, FEEDBACK_LINK)}`);
   blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: footer.join(' · ') }] });
 
@@ -616,6 +606,9 @@ function renderTelegramHtml(digest: Digest, links?: SelfServiceLinks | null): st
       `<a href="${escapeTelegramHtml(links.manage)}">Mute one of these, or pause everything</a>`,
     );
   }
+  lines.push(
+    `<a href="${escapeTelegramHtml(NOTIFICATION_HELP_URL)}">Why am I getting this notification?</a>`,
+  );
   lines.push(
     `<i>${escapeTelegramHtml(FEEDBACK_PROMPT)} <a href="${escapeTelegramHtml(ISSUES_URL)}">${escapeTelegramHtml(FEEDBACK_LINK)}</a></i>`,
   );

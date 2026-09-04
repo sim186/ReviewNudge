@@ -65,13 +65,9 @@ function buildMr(overrides: Partial<EnrichedMergeRequest> = {}): EnrichedMergeRe
  * blocking rules. Most fixtures have no reviewer, which would otherwise hand every
  * one of them an extra MR_WARNING row. warnings.test.ts covers it instead.
  */
-const options = (
-  rules: Partial<ReturnType<typeof rulesSchema.parse>> = {},
-  participantActivitySince?: string | null,
-) => ({
+const options = (rules: Partial<ReturnType<typeof rulesSchema.parse>> = {}) => ({
   rules: rulesSchema.parse({ notify_author_of_warnings: false, ...rules }),
   userFilter: { excludedUsers: [], excludeBots: true },
-  ...(participantActivitySince !== undefined ? { participantActivitySince } : {}),
 });
 
 const kinds = (mr: EnrichedMergeRequest, opts = options()) =>
@@ -377,25 +373,13 @@ describe('rule 3: unresolved threads', () => {
     );
   });
 
-  it('notifies every participant when the merge request has new activity', () => {
+  it('does not notify passive participants just because the merge request changed', () => {
     const mr = buildMr({
       reviewers: { nodes: [] },
       participants: { nodes: [{ username: 'carol', name: 'Carol' }] },
     });
-    const reason = evaluateMergeRequest(mr, options({}, '2026-08-02T00:00:00Z')).find(
-      (r) => r.username === 'carol',
-    );
-    expect(reason).toMatchObject({ username: 'carol', kind: 'PARTICIPANT' });
-    expect(reason?.detail).toBe('New activity in this merge request');
-  });
-
-  it('does not notify passive participants when nothing changed since the last run', () => {
-    const mr = buildMr({
-      reviewers: { nodes: [] },
-      participants: { nodes: [{ username: 'carol', name: 'Carol' }] },
-    });
-    expect(evaluateMergeRequest(mr, options({}, PUSH))).not.toEqual(
-      expect.arrayContaining([expect.objectContaining({ username: 'carol', kind: 'PARTICIPANT' })]),
+    expect(evaluateMergeRequest(mr, options())).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ username: 'carol' })]),
     );
   });
 
